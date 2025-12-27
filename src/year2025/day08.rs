@@ -47,7 +47,7 @@ pub fn part1(input: &Input) -> usize {
 type NearestNeighbour = (u16, u16);
 
 /// Gets the top N nearest neighbours
-fn get_closest_pairs(points: &Vec<Point>) -> Vec<NearestNeighbour> {
+fn get_closest_pairs(points: &[Point]) -> Vec<NearestNeighbour> {
     // Doing this incredibly naively by raw looping
     // Using matric algebra is much more efficient
     let mut distances: Vec<(usize, u16, u16)> = Vec::new();

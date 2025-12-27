@@ -84,11 +84,8 @@ fn part2(_input: &[Input]) -> usize {
         match branch_and_bound(input.lpbuilder.clone(), input.wiring.len()) {
             Some(solution) => {
                 acc += solution;
-                println!("Solution found.");
             }
-            None => {
-                println!("{}", "No solution found.".bright_red().bold());
-            }
+            None => continue
         }
     }
     println!("Total num of button presses: {}", acc);

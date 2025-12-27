@@ -5,26 +5,22 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
 
-const INPUT_NUM: usize = 0;
-
 pub fn main(data: &str) -> Result<(usize, usize)> {
-    let (num_pairs, points) = parse_input(data)?;
+    let input = parse_input(data)?;
 
-    Ok((part1(&points, num_pairs), part2(&points)))
+    Ok((part1(&input), part2(&input)))
 }
 
-pub fn parse_input(input: &str) -> Result<(usize, Vec<Point>)> {
-    let points: Vec<Point> = input
-        .lines()
-        .map(str::parse::<Point>)
-        .collect::<Result<Vec<_>>>()?;
-    let num_pairs: usize = if INPUT_NUM == 1 { 10 } else { 1000 };
-
-    Ok((num_pairs, points))
+pub fn parse_input(input: &str) -> Result<Input> {
+    let input = input.parse::<Input>()?;
+    Ok(input)
 }
 
-pub fn part1(input: &[Point], num_pairs: usize) -> usize {
-    let nearest_neighbours = get_closest_pairs(input).into_iter().take(num_pairs);
+pub fn part1(input: &Input) -> usize {
+    let nearest_neighbours = get_closest_pairs(&input.points)
+        .into_iter()
+        .take(input.num_pairs)
+        .collect::<Vec<_>>();
     let mut adj_table: HashMap<u16, HashSet<u16>> = HashMap::new();
 
     // Construct adjacency table
@@ -34,7 +30,7 @@ pub fn part1(input: &[Point], num_pairs: usize) -> usize {
     }
 
     // We now need to create the disjoint sets
-    let mut disjoint_set: DisjointSet<usize> = DisjointSet::from_iter(0..input.len());
+    let mut disjoint_set: DisjointSet<usize> = DisjointSet::from_iter(0..input.points.len());
     for (&i, neighbours) in adj_table.iter() {
         for j in neighbours.iter().copied() {
             let (i, j) = (i as usize, j as usize);
@@ -51,7 +47,7 @@ pub fn part1(input: &[Point], num_pairs: usize) -> usize {
 type NearestNeighbour = (u16, u16);
 
 /// Gets the top N nearest neighbours
-fn get_closest_pairs(points: &[Point]) -> Vec<NearestNeighbour> {
+fn get_closest_pairs(points: &Vec<Point>) -> Vec<NearestNeighbour> {
     // Doing this incredibly naively by raw looping
     // Using matric algebra is much more efficient
     let mut distances: Vec<(usize, u16, u16)> = Vec::new();
@@ -70,11 +66,11 @@ fn get_closest_pairs(points: &[Point]) -> Vec<NearestNeighbour> {
 }
 
 // Need to just perform kruskal's algorithm here
-pub fn part2(input: &[Point]) -> usize {
+pub fn part2(input: &Input) -> usize {
     let mut mst: Vec<(usize, usize)> = Vec::new();
-    let mut union_find: DisjointSet<usize> = DisjointSet::from_iter(0..input.len());
+    let mut union_find: DisjointSet<usize> = DisjointSet::from_iter(0..input.points.len());
 
-    for (u, v) in get_closest_pairs(input).iter() {
+    for (u, v) in get_closest_pairs(&input.points).iter() {
         if union_find.find(*u as usize) != union_find.find(*v as usize) {
             mst.push((*u as usize, *v as usize));
             union_find.union(*u as usize, *v as usize);
@@ -82,7 +78,7 @@ pub fn part2(input: &[Point]) -> usize {
     }
 
     let last_edge = mst.last().unwrap();
-    input[last_edge.0].x * input[last_edge.1].x
+    input.points[last_edge.0].x * input.points[last_edge.1].x
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -126,20 +122,60 @@ impl FromStr for Point {
     }
 }
 
+#[derive(Debug, Clone)]
+struct Input {
+    num_pairs: usize,
+    points: Vec<Point>,
+}
+
+impl FromStr for Input {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut lines = s.lines();
+        let num_pairs = lines.next().unwrap().split("=").last().unwrap().parse()?;
+        let points: Vec<Point> = lines.map(|line| line.parse()).collect::<Result<Vec<_>>>()?;
+        Ok(Self { num_pairs, points })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    const EXAMPLE: &str = "\
+num_neighbours=10
+162,817,812
+57,618,57
+906,360,560
+592,479,940
+352,342,300
+466,668,158
+542,29,236
+431,825,988
+739,650,466
+52,470,668
+216,146,977
+819,987,18
+117,168,530
+805,96,715
+346,949,466
+970,615,88
+941,993,340
+862,61,35
+984,92,344
+425,690,689";
+
     #[test]
     fn test_part1() {
-        let (num_pairs, points) = parse_input(1).unwrap();
-        assert_eq!(part1(&points, num_pairs), 40);
+        let input = parse_input(EXAMPLE).unwrap();
+        assert_eq!(part1(&input), 40);
     }
 
     #[test]
     fn test_part2() {
-        let points = parse_input(1).unwrap().1;
-        assert_eq!(part2(&points), 25272);
+        let input = parse_input(EXAMPLE).unwrap();
+        assert_eq!(part2(&input), 25272);
     }
 }

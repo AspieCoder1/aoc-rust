@@ -1,7 +1,5 @@
 use anyhow::Result;
 
-const INPUT_NUM: usize = 0;
-
 pub fn main(data: &str) -> Result<(u64, u64)> {
     let input = parse_input(data).unwrap();
     let (part1, part2) = solve(input);
@@ -71,9 +69,15 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    const EXAMPLE: &str = "\
+987654321111111
+811111111111119
+234234234234278
+818181911112111";
+
     #[test]
     fn test_part1() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         let part1 = part1(&input);
 
         assert_eq!(part1, 357);
@@ -81,7 +85,7 @@ mod tests {
 
     #[test]
     fn test_part2() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         let part2 = part2(&input);
 
         assert_eq!(part2, 3121910778619);

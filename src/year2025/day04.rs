@@ -1,7 +1,5 @@
 use anyhow::Result;
 
-const INPUT_NUM: usize = 0;
-
 pub fn main(data: &str) -> Result<(u32, u32)> {
     let input = parse_input(data)?;
 
@@ -79,15 +77,27 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    const EXAMPLE: &str = "\
+..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@.";
+
     #[test]
     fn test_part1() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part1(&input), 13);
     }
 
     #[test]
     fn test_part2() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part2(&input), 43);
     }
 }

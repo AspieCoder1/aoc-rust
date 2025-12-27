@@ -1,7 +1,5 @@
 use anyhow::Result;
 
-const INPUT_NUM: usize = 0;
-
 pub fn main(data: &str) -> Result<(u64, u64)> {
     let input = parse_input(data)?;
 
@@ -106,15 +104,21 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    const EXAMPLE: &str = "\
+123 328  51 64
+ 45 64  387 23
+  6 98  215 314
+*   +   *   +  ";
+
     #[test]
     fn test_part1() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part1(&input), 4277556);
     }
 
     #[test]
     fn test_part2() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part2(&input), 3263827);
     }
 }

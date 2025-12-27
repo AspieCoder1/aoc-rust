@@ -3,16 +3,13 @@ use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 use std::str::FromStr;
 
-const INPUT_NUM: usize = 0;
-
 pub fn main(data: &str) -> Result<(u32, u64)> {
     let input = parse_input(data)?;
     Ok((part1(&input), part2(&input)))
 }
 
 pub fn parse_input(input: &str) -> Result<Input> {
-    input
-        .parse()
+    input.parse()
 }
 
 pub fn part1(input: &Input) -> u32 {
@@ -124,15 +121,28 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    const EXAMPLE: &str = "\
+3-5
+10-14
+16-20
+12-18
+
+1
+5
+8
+11
+17
+32";
+
     #[test]
     fn test_part1() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part1(&input), 3);
     }
 
     #[test]
     fn test_part2() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part2(&input), 14);
     }
 }

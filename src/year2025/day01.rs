@@ -1,8 +1,6 @@
 use anyhow::Result;
 use std::str::FromStr;
 
-const INPUT_NUM: usize = 0;
-
 pub fn main(input: &str) -> Result<(i64, i64)> {
     let input = parse_input(input)?;
 
@@ -12,10 +10,7 @@ pub fn main(input: &str) -> Result<(i64, i64)> {
 }
 
 pub fn parse_input(input: &str) -> Result<Vec<Command>> {
-    input
-        .lines()
-        .map(str::parse)
-        .collect()
+    input.lines().map(str::parse).collect()
 }
 
 type Input = (i64, i64);
@@ -79,15 +74,27 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    const EXAMPLE: &str = "\
+L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82";
+
     #[test]
     fn test_part1() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part1(&input), 3);
     }
 
     #[test]
     fn test_part2() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part2(&input), 6);
     }
 }

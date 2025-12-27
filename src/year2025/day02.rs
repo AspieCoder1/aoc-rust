@@ -1,8 +1,6 @@
 use anyhow::Result;
 use std::str::FromStr;
 
-const INPUT_NUM: usize = 0;
-
 pub fn main(input: &str) -> Result<(u64, u64)> {
     let input = parse_input(input)?;
 
@@ -125,15 +123,17 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    const EXAMPLE: &str = "11-22,95-115,998-1012,1188511880-1188511890,222220-222224,1698522-1698528,446443-446449,38593856-38593862,565653-565659,824824821-824824827,2121212118-2121212124";
+
     #[test]
     fn test_part1() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part1(&input), 1227775554);
     }
 
     #[test]
     fn test_part2() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part2(&input), 4174379265);
     }
 }

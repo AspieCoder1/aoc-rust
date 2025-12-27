@@ -3,8 +3,6 @@ use regex::RegexBuilder;
 use std::collections::{HashSet, VecDeque};
 use std::str::FromStr;
 
-const INPUT_NUM: usize = 0;
-
 pub fn main(data: &str) -> Result<(usize, usize)> {
     let input = parse_input(data)?;
 
@@ -103,23 +101,26 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
+    const EXAMPLE: &str = "\
+[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}
+[...#.] (0,2,3,4) (2,3) (0,4) (0,1,2) (1,2,3,4) {7,5,12,7,2}
+[.###.#] (0,1,2,3,4) (0,3,4) (0,1,2,4,5) (1,2) {10,11,11,5,10,5}";
+
     #[test]
     fn test_parse_input() {
-        let input = "[.##.] (3) (1,3) (2) (2,3) (0,2) (0,1) {3,5,4,7}";
-
-        let parsed = input.parse::<Input>().unwrap();
+        let parsed = parse_input(EXAMPLE).unwrap();
         let expected = Input {
             pattern: 0b0110,
             wiring: vec![0b0001, 0b0101, 0b0010, 0b0011, 0b1010, 0b1100],
             joltage_required: vec![3, 5, 4, 7],
         };
 
-        assert_eq!(parsed, expected);
+        assert_eq!(parsed[0], expected);
     }
 
     #[test]
     fn test_part1() {
-        let input = parse_input(1).unwrap();
+        let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part1(&input), 7);
     }
 }

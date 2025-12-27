@@ -403,11 +403,6 @@ fn branch_and_bound(initial_lp: &LPBuilder) -> Option<Solution> {
             }
             Err(_) => continue,
         }
-        iterations += 1;
-        if iterations == 10000 {
-            println!("Max iterations reached.");
-            break;
-        }
     }
     best_solution
 }

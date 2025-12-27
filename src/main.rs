@@ -1,8 +1,8 @@
-use std::path::{Path, PathBuf};
 use clap::Parser;
 use colored::Colorize;
-use std::time::{Duration, Instant};
 use std::fs::read_to_string;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 struct Solution {
     year: u32,
@@ -28,7 +28,6 @@ fn main() {
 
     let year = args.year;
     let day = args.day;
-
 
     let solutions = [year2025()];
 

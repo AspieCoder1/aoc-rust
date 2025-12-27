@@ -1,3 +1,4 @@
+use crate::utils::simplex::{LPBuilder, LPOps, branch_and_bound};
 use anyhow::{Error, Result};
 use regex::RegexBuilder;
 use std::collections::{HashSet, VecDeque};
@@ -43,7 +44,14 @@ fn part1(input: &[Input]) -> usize {
 
 // We can recast each problem as ILP and then use the revised simplex algorithm to solve it.
 fn part2(_input: &[Input]) -> usize {
-    0
+    let mut acc: f64 = 0_f64;
+
+    for input in _input {
+        if let Some(solution) = branch_and_bound(&input.lpbuilder) {
+            acc += solution.minima;
+        }
+    }
+    acc as usize
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -51,6 +59,7 @@ struct Input {
     pattern: usize,
     wiring: Vec<usize>,
     joltage_required: Vec<usize>,
+    lpbuilder: LPBuilder,
 }
 
 impl FromStr for Input {
@@ -88,10 +97,26 @@ impl FromStr for Input {
             .map(|s| s.parse::<usize>().unwrap())
             .collect::<Vec<_>>();
 
+        let num_buttons = wiring_str.len();
+        let mut lp_builder = LPBuilder::new();
+        let num_machines = joltage_required.len();
+        let mut constraints = vec![vec![0; num_buttons]; num_machines];
+
+        for (button, wiring) in wiring_str.iter().enumerate() {
+            for machine in wiring[1].split(',').map(|s| s.parse::<usize>().unwrap()) {
+                constraints[machine][button] = 1;
+            }
+        }
+        for (ind, constraint) in constraints.iter().enumerate() {
+            lp_builder.add_constraint(constraint.clone(), LPOps::Eq, joltage_required[ind] as i64);
+        }
+        lp_builder.add_objective(vec![1; num_buttons]);
+
         Ok(Self {
             pattern,
             wiring,
             joltage_required,
+            lpbuilder: lp_builder,
         })
     }
 }
@@ -113,8 +138,20 @@ mod tests {
             pattern: 0b0110,
             wiring: vec![0b0001, 0b0101, 0b0010, 0b0011, 0b1010, 0b1100],
             joltage_required: vec![3, 5, 4, 7],
+            lpbuilder: LPBuilder {
+                objective: vec![1; 6],
+                constraints: vec![
+                    vec![0, 0, 0, 0, 1, 1],
+                    vec![0, 1, 0, 0, 0, 1],
+                    vec![0, 0, 1, 1, 1, 0],
+                    vec![1, 1, 0, 1, 0, 0],
+                ],
+                ops: vec![LPOps::Eq; 4],
+                ans: vec![3, 5, 4, 7],
+            },
         };
 
+        println!("{:?}", parsed[0].lpbuilder);
         assert_eq!(parsed[0], expected);
     }
 
@@ -122,5 +159,11 @@ mod tests {
     fn test_part1() {
         let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part1(&input), 7);
+    }
+
+    #[test]
+    fn test_part2() {
+        let input = parse_input(EXAMPLE).unwrap();
+        assert_eq!(part2(&input), 33);
     }
 }

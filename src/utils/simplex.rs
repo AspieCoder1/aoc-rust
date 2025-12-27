@@ -13,31 +13,31 @@ use std::fmt::Formatter;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LPOps {
+pub(crate) enum LPOps {
     Eq,
     Gte,
     Lte,
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
-struct LPBuilder {
-    objective: Vec<i64>,
-    constraints: Vec<Vec<i64>>,
-    ans: Vec<i64>,
-    ops: Vec<LPOps>,
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct LPBuilder {
+    pub(crate) objective: Vec<i64>,
+    pub(crate) constraints: Vec<Vec<i64>>,
+    pub(crate) ans: Vec<i64>,
+    pub(crate) ops: Vec<LPOps>,
 }
 
 impl LPBuilder {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    fn add_objective(&mut self, objective: Vec<i64>) -> &mut Self {
+    pub(crate) fn add_objective(&mut self, objective: Vec<i64>) -> &mut Self {
         self.objective = objective;
         self
     }
 
-    fn add_constraint(
+    pub(crate) fn add_constraint(
         &mut self,
         mut constraint: Vec<i64>,
         mut op: LPOps,
@@ -129,11 +129,11 @@ impl LPBuilder {
     }
 }
 
-#[derive(Debug, PartialEq)]
-#[derive(Clone)]
-struct Solution {
-    minima: f64,
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct Solution {
+    pub(crate) minima: f64,
     solution: OMatrix<f64, Dyn, U1>,
+    basis: Vec<usize>,
 }
 
 impl Solution {
@@ -143,7 +143,12 @@ impl Solution {
 
     /// Generates the new fractional constraints to be added to the LP problem
     fn get_fractional_constraints(&self) -> HashMap<usize, (i64, i64)> {
-        self.solution.iter().enumerate().filter(|&(ind, v)| v.fract() != 0_f64).map(|(ind, v)|(ind, (v.floor() as i64, v.ceil() as i64))).collect()
+        self.solution
+            .iter()
+            .enumerate()
+            .filter(|&(ind, v)| v.fract() != 0_f64)
+            .map(|(ind, v)| (ind, (v.floor() as i64, v.ceil() as i64)))
+            .collect()
     }
 }
 
@@ -164,7 +169,7 @@ impl fmt::Display for Solution {
 }
 
 #[derive(Debug)]
-struct LPSolver {
+pub(crate) struct LPSolver {
     p1_objective: OMatrix<f64, Dyn, U1>,
     c: OMatrix<f64, Dyn, U1>,
     b: OMatrix<f64, Dyn, U1>,
@@ -242,7 +247,7 @@ fn _pretty_print_variable(variable: char, ind: usize, term: f64) -> String {
 }
 
 #[derive(Debug, Error)]
-enum LPSolverError {
+pub(crate) enum LPSolverError {
     #[error("Problem is unbounded.")]
     UnboundedProblem,
     #[error("Problem has no solution.")]
@@ -251,36 +256,33 @@ enum LPSolverError {
     MaxIterationsReached,
 }
 
+type RevisedSimplexOutput = (OMatrix<f64, Dyn, U1>, Vec<usize>);
+
 impl LPSolver {
-    fn _get_basic_feasible_solution(&self) -> Result<OMatrix<f64, Dyn, Const<1>>, LPSolverError> {
+    fn _get_basic_feasible_solution(&self) -> Result<Vec<usize>, LPSolverError> {
         let b_columns: Vec<usize> = (self.artificial_var_start..self.constraints.ncols()).collect();
 
-        let solution = self._revised_simplex_method(b_columns, self.p1_objective.clone(), true)?;
+        let (solution, final_basis) =
+            self._revised_simplex_method(b_columns, self.p1_objective.clone(), true)?;
 
         if &self.p1_objective.transpose() * &solution != Vector1::zeros() {
             return Err(LPSolverError::NoSolution);
         }
-        Ok(solution)
+        Ok(final_basis)
     }
 
     fn solve(&self) -> Result<Solution, LPSolverError> {
         // Phase 1 generate the basic feasible solution
-        let basic_feasible_solution = self._get_basic_feasible_solution()?;
-
-        // Generate the initial basis
-        let initial_b_columns = basic_feasible_solution
-            .iter()
-            .enumerate()
-            .filter(|&(_, &v)| v != 0_f64)
-            .map(|(i, _)| i)
-            .collect::<Vec<_>>();
+        let bfs_basis = self._get_basic_feasible_solution()?;
 
         // Phase 2 now solve the original LP task using the basic feasible solution
-        let solution = self._revised_simplex_method(initial_b_columns, self.c.clone(), false)?;
+        let (solution, final_basis) =
+            self._revised_simplex_method(bfs_basis, self.c.clone(), false)?;
 
         Ok(Solution {
             minima: (&self.c.transpose() * &solution)[(0, 0)],
             solution: solution.select_rows(&(0..self.slack_var_start).collect::<Vec<_>>()),
+            basis: final_basis,
         })
     }
 
@@ -289,7 +291,7 @@ impl LPSolver {
         mut b_columns: Vec<usize>,
         objective_function: OMatrix<f64, Dyn, U1>,
         use_artificial_vars: bool,
-    ) -> Result<OMatrix<f64, Dyn, U1>, LPSolverError> {
+    ) -> Result<RevisedSimplexOutput, LPSolverError> {
         let mut final_index = self.constraints.ncols();
         if !use_artificial_vars {
             final_index = self.artificial_var_start;
@@ -324,7 +326,7 @@ impl LPSolver {
                 for (i, &col) in b_columns.iter().enumerate() {
                     solution.set_row(col, &basis_solution.row(i));
                 }
-                return Ok(solution);
+                return Ok((solution, b_columns));
             }
             let entering_index = n_columns[reduced_costs.argmin().0];
             let pivot_column_vector = &basis_matrix_inv * self.constraints.column(entering_index);
@@ -360,11 +362,10 @@ impl LPSolver {
     }
 }
 
-fn branch_and_bound(initial_lp: &LPBuilder) -> Option<Solution> {
+pub(crate) fn branch_and_bound(initial_lp: &LPBuilder) -> Option<Solution> {
     let mut queue = VecDeque::from(vec![initial_lp.clone()]);
     let mut best_solution: Option<Solution> = None;
     let mut best_minima = f64::MAX;
-    let mut iterations = 0;
 
     while let Some(lp) = queue.pop_front() {
         let solver = lp.clone().build().unwrap();
@@ -381,25 +382,34 @@ fn branch_and_bound(initial_lp: &LPBuilder) -> Option<Solution> {
                 }
 
                 // Performing strong branching by exploring each fractional constraint
-                for (variable, (lower_bound, upper_bound)) in solution.get_fractional_constraints().iter() {
+                for (variable, (lower_bound, upper_bound)) in
+                    solution.get_fractional_constraints().iter()
+                {
                     let mut constraint_eq = vec![0; solution.solution.nrows()];
                     constraint_eq[*variable] = 1;
 
                     // Generate upper bound sub-problem
                     let mut branched_problem_upper = lp.clone();
-                    branched_problem_upper.add_constraint(constraint_eq.clone(), LPOps::Gte, *upper_bound);
+                    branched_problem_upper.add_constraint(
+                        constraint_eq.clone(),
+                        LPOps::Gte,
+                        *upper_bound,
+                    );
                     if branched_problem_upper != lp {
                         queue.push_back(branched_problem_upper);
                     }
 
                     // Generate lower bound sub-problem
                     let mut branched_problem_lower = lp.clone();
-                    branched_problem_lower.add_constraint(constraint_eq.clone(), LPOps::Lte, *lower_bound);
+                    branched_problem_lower.add_constraint(
+                        constraint_eq.clone(),
+                        LPOps::Lte,
+                        *lower_bound,
+                    );
                     if branched_problem_lower != lp {
                         queue.push_back(branched_problem_lower);
                     }
                 }
-
             }
             Err(_) => continue,
         }
@@ -454,6 +464,7 @@ Subject to:
         let expected = Solution {
             minima: -20.0,
             solution: DVector::from_column_slice(&[0.0, 0.0, 5.0]),
+            basis: vec![3, 2],
         };
         assert_eq!(solution, expected);
     }
@@ -469,6 +480,7 @@ Subject to:
         let expected = Solution {
             minima: -18.571428571428573,
             solution: DVector::from_column_slice(&[15_f64 / 7_f64, 0.0, 25_f64 / 7_f64]),
+            basis: vec![0, 1, 2],
         };
         assert!(abs_diff_eq!(
             solution.minima,
@@ -492,10 +504,12 @@ Subject to:
         let s1 = Solution {
             minima: -20.0,
             solution: DVector::from_column_slice(&[0.0, 0.0, 5.0]),
+            basis: vec![0, 1, 2],
         };
         let s2 = Solution {
             minima: -20.0,
             solution: DVector::from_column_slice(&[0.0, 0.0, 5.1]),
+            basis: vec![0, 1, 2],
         };
         assert!(s1.is_integer_solution());
         assert!(!s2.is_integer_solution());
@@ -506,6 +520,7 @@ Subject to:
         let solution = Solution {
             minima: -20.0,
             solution: DVector::from_column_slice(&[0.0, 0.0, 5.0]),
+            basis: vec![0, 1, 2],
         };
         let expected = "Minima: -20\nSolution: {x₀: 0, x₁: 0, x₂: 5}\n";
         assert_eq!(expected, solution.to_string());
@@ -516,6 +531,7 @@ Subject to:
         let s1 = Solution {
             minima: -20.0,
             solution: DVector::from_column_slice(&[1.6, 0.2, 5.5]),
+            basis: vec![0, 1, 2],
         };
         assert!(!s1.is_integer_solution());
         let fractional_constraints = s1.get_fractional_constraints();

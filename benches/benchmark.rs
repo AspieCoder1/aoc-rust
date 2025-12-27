@@ -1,4 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
+use std::fs::read_to_string;
 
 macro_rules! benchmark {
     ($year:ident $($day:ident),*) => {
@@ -6,12 +7,12 @@ macro_rules! benchmark {
         paste::item! {
             fn [<bench_ $year _ $day>](c: &mut Criterion){
                 let mut group = c.benchmark_group(format!("{}/{}", stringify!($year), stringify!($day)));
-                for i in 0..=1 {
-                    let input = aoc::$year::$day::parse_input(i).unwrap();
-                    group.bench_with_input(format!("parse_input_{}", i).as_str(), &i, |b, &i| b.iter(|| aoc::$year::$day::parse_input(i)));
-                    group.bench_with_input(format!("part1_{}", i).as_str(), &input, |b, input| b.iter(|| aoc::$year::$day::part1(input)));
-                    group.bench_with_input(format!("part2_{}", i).as_str(), &input, |b, input| b.iter(|| aoc::$year::$day::part2(input)));
-                }
+                let path = format!("input/{}/{}.txt", stringify!($year), stringify!($day));
+                let data = read_to_string(path).unwrap();
+                let input = aoc::$year::$day::parse_input(data.as_str()).unwrap();
+                group.bench_with_input("parse_input", &data.as_str(), |b, data| b.iter(|| aoc::$year::$day::parse_input(data)));
+                group.bench_with_input("part_1", &input, |b, input| b.iter(|| aoc::$year::$day::part1(input)));
+                group.bench_with_input("part_2", &input, |b, input| b.iter(|| aoc::$year::$day::part2(input)));
                 group.finish();
             }
         }

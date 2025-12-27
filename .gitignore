@@ -1,0 +1,5 @@
+/target
+.idea/
+src/year2025/inputs/*
+src/year2025/test_inputs/*
+

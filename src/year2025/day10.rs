@@ -1,6 +1,5 @@
 use crate::utils::simplex::{LPBuilder, LPOps};
 use anyhow::{Error, Result};
-use colored::Colorize;
 use regex::RegexBuilder;
 use std::collections::{HashSet, VecDeque};
 use std::str::FromStr;

@@ -5,8 +5,11 @@
 
 use anyhow::Result;
 use approx::{abs_diff_eq, relative_eq};
+use colored::Colorize;
 use itertools::Itertools;
 use nalgebra::{ComplexField, Const, DMatrix, DVector, Dyn, OMatrix, U1, Vector1, stack};
+use num::rational::Rational64;
+use num::{Signed, Zero};
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::fmt::Formatter;
@@ -17,6 +20,10 @@ pub(crate) enum LPOps {
     Eq,
     Gte,
     Lte,
+}
+
+fn to_rational(x: i64) -> Rational64 {
+    Rational64::from_integer(x)
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -72,144 +79,107 @@ impl LPBuilder {
         self
     }
 
-    #[allow(clippy::toplevel_ref_arg)]
-    fn build(self) -> Result<LPSolver> {
-        // Get the number of constraints and the number of variables
+    pub(crate) fn build(&self) -> LinearProgrammingProblem {
         let m = self.constraints.len();
-        let num_variables = self.constraints.first().map(|v| v.len()).unwrap_or(0);
+        let n_x = self.constraints.first().map(|v| v.len()).unwrap_or(0);
 
-        // Add slack and artificial variables
-        let artificial_vars_matrix = DMatrix::<f64>::from_diagonal_element(m, m, 1_f64);
-        let num_slack_vars = self
+        let n_slack = self
             .ops
             .iter()
-            .filter(|&op| matches!(op, LPOps::Gte | LPOps::Lte))
+            .filter(|&op| matches!(op, LPOps::Lte | LPOps::Gte))
             .count();
-        let mut slack_vars_matrix = DMatrix::<f64>::zeros(m, num_slack_vars);
 
-        let mut curr_slack_var = 0;
-        for (i, op) in self.ops.iter().enumerate() {
-            match op {
-                LPOps::Eq => continue,
-                LPOps::Gte => slack_vars_matrix[(i, curr_slack_var)] = -1_f64,
-                LPOps::Lte => slack_vars_matrix[(i, curr_slack_var)] = 1_f64,
+        let n_art = self
+            .ops
+            .iter()
+            .filter(|&op| matches!(op, LPOps::Gte | LPOps::Eq))
+            .count();
+
+        let slack_start = n_x;
+        let art_start = slack_start + n_slack;
+        let z_col = art_start + n_art;
+        let w_col = z_col + 1;
+        let rhs_col = w_col + 1;
+
+        let total_cols = rhs_col + 1;
+        let total_rows = m + 2;
+
+        let p2_row = m;
+        let p1_row = m + 1;
+
+        let mut t = vec![vec![Rational64::zero(); total_cols]; total_rows];
+        let mut active = vec![usize::MAX; total_rows];
+
+        let mut slack_j = slack_start;
+        let mut art_j = art_start;
+
+        // Constraints
+        for i in 0..m {
+            for j in 0..n_x {
+                t[i][j] = Rational64::from_integer(self.constraints[i][j])
             }
-            curr_slack_var += 1;
+
+            match self.ops[i] {
+                LPOps::Lte => {
+                    t[i][slack_j] = Rational64::ONE;
+                    active[i] = slack_j;
+                    slack_j += 1;
+                }
+                LPOps::Gte => {
+                    // surplus -1 and artificial +1, basic is artificial
+                    t[i][slack_j] = -Rational64::ONE;
+                    slack_j += 1;
+
+                    t[i][art_j] = Rational64::ONE;
+                    active[i] = art_j;
+                    art_j += 1;
+                }
+                LPOps::Eq => {
+                    t[i][art_j] = Rational64::ONE;
+                    active[i] = art_j;
+                    art_j += 1;
+                }
+            }
+
+            t[i][rhs_col] = Rational64::from_integer(self.ans[i])
         }
 
-        let initial_objective_function = DVector::<f64>::from_iterator(
-            self.objective.len(),
-            self.objective.iter().map(|&v| v as f64),
-        );
-        let constraints_flat = self.constraints.iter().flatten().map(|&v| v as f64);
-        let constraints_matrix = DMatrix::from_row_iterator(
-            self.constraints.len(),
-            self.constraints[0].len(),
-            constraints_flat,
-        );
-
-        // Creating necessary block vector and matrices
-        let b = DVector::<f64>::from_iterator(self.ans.len(), self.ans.iter().map(|&v| v as f64));
-        let c = stack![initial_objective_function; DVector::<f64>::zeros(num_slack_vars + m)];
-        let p1_objective = stack![DVector::<f64>::zeros(num_slack_vars + num_variables); DVector::<f64>::from_element(m, 1_f64)];
-        let constraints = stack![
-            constraints_matrix,
-            slack_vars_matrix,
-            artificial_vars_matrix
-        ];
-
-        Ok(LPSolver {
-            p1_objective,
-            c,
-            b,
-            constraints,
-            slack_var_start: num_variables,
-            artificial_var_start: num_variables + num_slack_vars,
-        })
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub(crate) struct Solution {
-    pub(crate) minima: f64,
-    solution: OMatrix<f64, Dyn, U1>,
-    basis: Vec<usize>,
-}
-
-impl Solution {
-    fn is_integer_solution(&self) -> bool {
-        self.solution.iter().all(|&v| v.round() == v)
-    }
-
-    /// Generates the new fractional constraints to be added to the LP problem
-    fn get_fractional_constraints(&self) -> HashMap<usize, (i64, i64)> {
-        self.solution
-            .iter()
-            .enumerate()
-            .filter(|&(ind, v)| v.fract() != 0_f64)
-            .map(|(ind, v)| (ind, (v.floor() as i64, v.ceil() as i64)))
-            .collect()
-    }
-}
-
-impl fmt::Display for Solution {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Minima: {}", self.minima)?;
-        writeln!(
-            f,
-            "Solution: {{{}}}",
-            self.solution
-                .row_iter()
-                .enumerate()
-                .map(|(i, value)| format!("{}: {}", _subscript_variable('x', i), value[(0, 0)]))
-                .join(", ")
-        )?;
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub(crate) struct LPSolver {
-    p1_objective: OMatrix<f64, Dyn, U1>,
-    c: OMatrix<f64, Dyn, U1>,
-    b: OMatrix<f64, Dyn, U1>,
-    constraints: OMatrix<f64, Dyn, Dyn>,
-    slack_var_start: usize,
-    artificial_var_start: usize,
-}
-
-impl fmt::Display for LPSolver {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let objective = self
-            .c
-            .iter()
-            .take(self.slack_var_start)
-            .enumerate()
-            .map(|(ind, term)| _pretty_print_variable('x', ind, *term))
-            .collect::<Vec<_>>()
-            .join(" + ");
-        write!(f, "Minimise: Z = {}", objective)?;
-        writeln!(f)?;
-        writeln!(f, "Subject to:")?;
-        for (i, row) in self.constraints.row_iter().enumerate() {
-            let constraint = row
-                .iter()
-                .enumerate()
-                .filter(|&(_, term)| term != &0_f64)
-                .map(|(ind, term)| {
-                    if ind < self.slack_var_start {
-                        _pretty_print_variable('x', ind, *term)
-                    } else if ind < self.artificial_var_start {
-                        _pretty_print_variable('s', ind - self.slack_var_start, *term)
-                    } else {
-                        _pretty_print_variable('a', ind - self.artificial_var_start, *term)
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" + ");
-            writeln!(f, "  {} = {}", constraint, self.b[i])?;
+        // Phase 2 objective: -c^T x + z = 0
+        for j in 0..n_x {
+            t[p2_row][j] = Rational64::from_integer(-self.objective[j]);
         }
-        Ok(())
+        t[p2_row][z_col] = Rational64::ONE;
+        active[p2_row] = z_col;
+
+        // Phase 1 objective: (sum artificials) + w = 0  => w = -sum a
+        // Initialise the coefficients on artificials to +1, and w to +1.
+        for j in art_start..z_col {
+            t[p1_row][j] = Rational64::ONE;
+        }
+        t[p1_row][w_col] = Rational64::ONE;
+        active[p1_row] = w_col;
+
+        let mut lp = LinearProgrammingProblem {
+            tableau: t,
+            n_constraints: m,
+            slack_var_start: slack_start,
+            artificial_var_start: art_start,
+            z_col,
+            rhs_col,
+            active,
+        };
+
+        // "Price out" phase 1 objective with respect to the initial basis:
+        // For each constraint row where an artificial is basic, eliminate it from the phase 1 row.
+        for i in 0..m {
+            let bc = lp.active[i];
+            if bc >= lp.artificial_var_start && bc < lp.z_col {
+                // Phase1 has +1 at this artificial; subtract the row to make it 0.
+                lp.row_add_scaled(p1_row, i, -lp.tableau[p1_row][bc]);
+            }
+        }
+
+        lp
     }
 }
 
@@ -246,175 +216,178 @@ fn _pretty_print_variable(variable: char, ind: usize, term: f64) -> String {
     }
 }
 
-#[derive(Debug, Error)]
-pub(crate) enum LPSolverError {
-    #[error("Problem is unbounded.")]
-    UnboundedProblem,
-    #[error("Problem has no solution.")]
-    NoSolution,
-    #[error("Max iterations reached.")]
-    MaxIterationsReached,
+/// Solve LP problem using normal simplex method.
+pub struct LinearProgrammingProblem {
+    /// The simplex tableau.
+    tableau: Vec<Vec<Rational64>>,
+    /// Number of constraints
+    n_constraints: usize,
+    /// Index where slack variables start.
+    slack_var_start: usize,
+    /// Index where artificial variables start.
+    artificial_var_start: usize,
+    z_col: usize,
+    rhs_col: usize,
+    active: Vec<usize>,
 }
 
-type RevisedSimplexOutput = (OMatrix<f64, Dyn, U1>, Vec<usize>);
+pub enum SimplexResult {
+    Optimal,
+    Unbounded,
+}
 
-impl LPSolver {
-    fn _get_basic_feasible_solution(&self) -> Result<Vec<usize>, LPSolverError> {
-        let b_columns: Vec<usize> = (self.artificial_var_start..self.constraints.ncols()).collect();
-
-        let (solution, final_basis) =
-            self._revised_simplex_method(b_columns, self.p1_objective.clone(), true)?;
-
-        if &self.p1_objective.transpose() * &solution != Vector1::zeros() {
-            return Err(LPSolverError::NoSolution);
-        }
-        Ok(final_basis)
+impl LinearProgrammingProblem {
+    fn is_basic_in_constraints(&self, col: usize) -> bool {
+        self.active
+            .iter()
+            .take(self.n_constraints)
+            .any(|&bc| bc == col)
     }
 
-    fn solve(&self) -> Result<Solution, LPSolverError> {
-        // Phase 1 generate the basic feasible solution
-        let bfs_basis = self._get_basic_feasible_solution()?;
-
-        // Phase 2 now solve the original LP task using the basic feasible solution
-        let (solution, final_basis) =
-            self._revised_simplex_method(bfs_basis, self.c.clone(), false)?;
-
-        Ok(Solution {
-            minima: (&self.c.transpose() * &solution)[(0, 0)],
-            solution: solution.select_rows(&(0..self.slack_var_start).collect::<Vec<_>>()),
-            basis: final_basis,
-        })
+    fn rhs(&self, row: usize) -> Rational64 {
+        self.tableau[row][self.rhs_col]
     }
 
-    fn _revised_simplex_method(
-        &self,
-        mut b_columns: Vec<usize>,
-        objective_function: OMatrix<f64, Dyn, U1>,
-        use_artificial_vars: bool,
-    ) -> Result<RevisedSimplexOutput, LPSolverError> {
-        let mut final_index = self.constraints.ncols();
-        if !use_artificial_vars {
-            final_index = self.artificial_var_start;
+    fn row_add_scaled(&mut self, dst: usize, src: usize, scale: Rational64) {
+        if scale.is_zero() {
+            return;
         }
-        let mut n_columns = (0..final_index)
-            .filter(|x| !b_columns.contains(x))
-            .collect::<Vec<_>>();
-        let mut iterations = 0;
+        for j in 0..self.tableau[dst].len() {
+            let v = scale * self.tableau[src][j];
+            self.tableau[dst][j] += v;
+        }
+    }
+
+    /// Choose entering variable as the most negative coefficient in the objective row
+    /// among allowed columns, excluding `z`, `w`, `rhs`, and columns currently basic.
+    fn pivot_col(&self, obj_row: usize) -> Option<usize> {
+        self.tableau[obj_row][0..self.artificial_var_start]
+            .iter()
+            .enumerate()
+            .filter(|&(col, coeff)| !self.is_basic_in_constraints(col) && coeff.is_negative())
+            .min_by_key(|&(_, coeff)| *coeff)
+            .map(|(col, _)| col)
+    }
+
+    /// Choose leaving row by minimum ratio test among constraint rows with positive pivot column coefficient.
+    fn pivot_row(&self, enter_col: usize) -> Option<usize> {
+        (0..self.n_constraints)
+            .map(|i| (i, self.tableau[i][enter_col]))
+            .filter(|(_, a)| a.is_positive())
+            .min_by_key(|&(i, a)| self.rhs(i) / a)
+            .map(|(i, _)| i)
+    }
+
+    /// Correct Gauss-Jordan simplex pivot:
+    /// - Normalise the pivot row so the pivot element becomes 1.
+    /// - Eliminate the entering column from all other rows.
+    fn pivot(&mut self, pr: usize, pc: usize) {
+        let pivot = self.tableau[pr][pc];
+        assert!(!pivot.is_zero(), "pivot element must be non-zero");
+
+        // Normalize pivot row
+        let n_cols = self.tableau[pr].len();
+        for j in 0..n_cols {
+            self.tableau[pr][j] /= pivot;
+        }
+
+        // Eliminate pivot column in all other rows
+        let pivot_row = self.tableau[pr].clone();
+        for i in 0..self.tableau.len() {
+            if i == pr {
+                continue;
+            }
+            let factor = self.tableau[i][pc];
+            if factor.is_zero() {
+                continue;
+            }
+            for j in 0..n_cols {
+                self.tableau[i][j] -= factor * pivot_row[j];
+            }
+        }
+
+        self.active[pr] = pc;
+    }
+
+    fn remove_degenerate_artificials_from_basis(&mut self) {
+        for i in 0..self.n_constraints {
+            let basic = self.active[i];
+
+            // Artificial basic?
+            if !(basic >= self.artificial_var_start && basic < self.z_col) {
+                continue;
+            }
+            // If this artificial is non-degenerate (rhs != 0), that
+            // indicates phase 1 didn't actually drive artificials to
+            // 0 (infeasible or not fully optimized).
+            if !self.rhs(i).is_zero() {
+                continue;
+            }
+
+            // Find a non-artificial, nonbasic column with a nonzero coefficient in this row.
+            let entering = (0..self.artificial_var_start)
+                .find(|&col| !self.tableau[i][col].is_zero() && !self.is_basic_in_constraints(col));
+
+            if let Some(col) = entering {
+                self.pivot(i, col);
+            }
+        }
+    }
+
+    fn simplex(&mut self, obj_row: usize) -> SimplexResult {
         loop {
-            let basic_vars_matrix = self.constraints.select_columns(&b_columns);
-            let non_basic_matrix = self.constraints.select_columns(&n_columns);
-            let basis_matrix_inv = basic_vars_matrix.clone().try_inverse().unwrap();
-            let non_basic_coeffs = objective_function.select_rows(&n_columns);
-            let basic_var_coeffs = objective_function.select_rows(&b_columns);
-
-            let simplex_multipliers =
-                basic_vars_matrix.transpose().try_inverse().unwrap() * basic_var_coeffs;
-            let reduced_costs =
-                non_basic_coeffs - non_basic_matrix.transpose() * simplex_multipliers;
-
-            // Deals with some issues where tolerance causes issues with the algorithm failing to stop
-            if reduced_costs >= DVector::<f64>::zeros(reduced_costs.nrows())
-                || abs_diff_eq!(
-                    reduced_costs,
-                    DVector::<f64>::zeros(reduced_costs.nrows()),
-                    epsilon = 1e-15_f64
-                )
-            {
-                let mut solution = DVector::<f64>::zeros(self.constraints.ncols());
-                let basis_solution = basis_matrix_inv * &self.b;
-
-                for (i, &col) in b_columns.iter().enumerate() {
-                    solution.set_row(col, &basis_solution.row(i));
-                }
-                return Ok((solution, b_columns));
-            }
-            let entering_index = n_columns[reduced_costs.argmin().0];
-            let pivot_column_vector = &basis_matrix_inv * self.constraints.column(entering_index);
-
-            if pivot_column_vector <= DVector::<f64>::zeros(pivot_column_vector.nrows()) {
-                return Err(LPSolverError::UnboundedProblem);
-            }
-
-            // leaving_index = argmin{xᵢ/dᵢ; dᵢ > 0}
-            let leaving_col = (&basis_matrix_inv * &self.b)
-                .row_iter()
-                .zip(pivot_column_vector.row_iter())
-                .enumerate()
-                .filter(|&(_, (_, pivot_val))| pivot_val.x > 0_f64)
-                .map(|(i, (x, pivot_val))| (i, x.x / pivot_val.x))
-                .min_by(|&(_, a), &(i2, b)| a.total_cmp(&b))
-                .unwrap()
-                .0;
-
-            b_columns[leaving_col] = entering_index;
-            n_columns[reduced_costs.argmin().0] = b_columns[leaving_col];
-            iterations += 1;
-            if iterations == 10000 {
-                let mut solution = DVector::<f64>::zeros(self.constraints.ncols());
-                let basis_solution = basis_matrix_inv * &self.b;
-
-                for (i, &col) in b_columns.iter().enumerate() {
-                    solution.set_row(col, &basis_solution.row(i));
-                }
-                return Err(LPSolverError::MaxIterationsReached);
-            }
+            let Some(enter) = self.pivot_col(obj_row) else {
+                return SimplexResult::Optimal;
+            };
+            let Some(leave) = self.pivot_row(enter) else {
+                return SimplexResult::Unbounded;
+            };
+            self.pivot(leave, enter);
         }
     }
-}
 
-pub(crate) fn branch_and_bound(initial_lp: &LPBuilder) -> Option<Solution> {
-    let mut queue = VecDeque::from(vec![initial_lp.clone()]);
-    let mut best_solution: Option<Solution> = None;
-    let mut best_minima = f64::MAX;
-
-    while let Some(lp) = queue.pop_front() {
-        let solver = lp.clone().build().unwrap();
-        let solution = solver.solve();
-        match solution {
-            Ok(solution) => {
-                if best_minima <= solution.minima {
-                    continue;
-                }
-                if solution.is_integer_solution() {
-                    best_minima = solution.minima;
-                    best_solution = Some(solution);
-                    continue;
-                }
-
-                // Performing strong branching by exploring each fractional constraint
-                for (variable, (lower_bound, upper_bound)) in
-                    solution.get_fractional_constraints().iter()
-                {
-                    let mut constraint_eq = vec![0; solution.solution.nrows()];
-                    constraint_eq[*variable] = 1;
-
-                    // Generate upper bound sub-problem
-                    let mut branched_problem_upper = lp.clone();
-                    branched_problem_upper.add_constraint(
-                        constraint_eq.clone(),
-                        LPOps::Gte,
-                        *upper_bound,
-                    );
-                    if branched_problem_upper != lp {
-                        queue.push_back(branched_problem_upper);
-                    }
-
-                    // Generate lower bound sub-problem
-                    let mut branched_problem_lower = lp.clone();
-                    branched_problem_lower.add_constraint(
-                        constraint_eq.clone(),
-                        LPOps::Lte,
-                        *lower_bound,
-                    );
-                    if branched_problem_lower != lp {
-                        queue.push_back(branched_problem_lower);
-                    }
-                }
-            }
-            Err(_) => continue,
+    pub fn minimize(&mut self) -> Option<Rational64> {
+        let p2 = self.n_constraints;
+        for v in self.tableau[p2][0..self.slack_var_start].iter_mut() {
+            *v = -*v;
         }
+        self.maximize().map(|n| -n)
     }
-    best_solution
+
+    pub fn maximize(&mut self) -> Option<Rational64> {
+        let p2 = self.n_constraints;
+        let p1 = self.n_constraints + 1;
+
+        match self.simplex(p1) {
+            SimplexResult::Optimal => {}
+            SimplexResult::Unbounded => return None,
+        }
+
+        // Feasibility: w = RHS in phase1 row (since w is the objective variable with coefficient 1).
+        if !self.rhs(p1).is_zero() {
+            return None; // infeasible
+        }
+        self.remove_degenerate_artificials_from_basis();
+
+        let res = match self.simplex(p2) {
+            SimplexResult::Optimal => Some(self.rhs(p2)),
+            SimplexResult::Unbounded => None,
+        };
+        res
+    }
+
+    pub fn solution_x(&self) -> Vec<Rational64> {
+        let mut x = vec![Rational64::ZERO; self.slack_var_start];
+
+        for row in 0..self.n_constraints {
+            let col = self.active[row];
+            if col < self.slack_var_start {
+                x[col] = self.tableau[row][self.rhs_col];
+            }
+        }
+
+        x
+    }
 }
 
 #[cfg(test)]
@@ -424,21 +397,21 @@ mod tests {
 
     fn lp_builder() -> LPBuilder {
         let mut builder = LPBuilder::new();
-        builder.add_objective(vec![-2, -3, -4]);
+        builder.add_objective(vec![2, 3, 4]);
         builder.add_constraint(vec![3, 2, 1], LPOps::Lte, 10);
         builder.add_constraint(vec![2, 5, 3], LPOps::Lte, 15);
         builder
     }
 
-    fn lp_solver() -> LPSolver {
-        lp_builder().build().unwrap()
+    fn lp_solver() -> LinearProgrammingProblem {
+        lp_builder().build()
     }
 
     #[test]
     fn test_build() {
         let b1 = lp_builder();
         let b2 = LPBuilder::default()
-            .add_objective(vec![-2, -3, -4])
+            .add_objective(vec![2, 3, 4])
             .add_constraint(vec![3, 2, 1], LPOps::Lte, 10)
             .add_constraint(vec![2, 5, 3], LPOps::Lte, 15)
             .clone();
@@ -446,109 +419,8 @@ mod tests {
     }
 
     #[test]
-    fn test_lp_solver_display() {
-        let solver = lp_solver();
-
-        let expected = "Minimise: Z = -2x₀ + -3x₁ + -4x₂
-Subject to:
-  3x₀ + 2x₁ + x₂ + s₀ + a₀ = 10
-  2x₀ + 5x₁ + 3x₂ + s₁ + a₁ = 15\n";
-        assert_eq!(expected, solver.to_string());
-    }
-
-    #[test]
     fn test_solve() {
-        let solver = lp_solver();
-
-        let solution = solver.solve().unwrap();
-        let expected = Solution {
-            minima: -20.0,
-            solution: DVector::from_column_slice(&[0.0, 0.0, 5.0]),
-            basis: vec![3, 2],
-        };
-        assert_eq!(solution, expected);
-    }
-
-    #[test]
-    fn test_solve_tolerance_edge_case() {
-        let mut builder = LPBuilder::new();
-        builder.add_objective(vec![-2, -3, -4]);
-        builder.add_constraint(vec![3, 2, 1], LPOps::Eq, 10);
-        builder.add_constraint(vec![2, 5, 3], LPOps::Eq, 15);
-        let solver = builder.build().unwrap();
-        let solution = solver.solve().unwrap();
-        let expected = Solution {
-            minima: -18.571428571428573,
-            solution: DVector::from_column_slice(&[15_f64 / 7_f64, 0.0, 25_f64 / 7_f64]),
-            basis: vec![0, 1, 2],
-        };
-        assert!(abs_diff_eq!(
-            solution.minima,
-            expected.minima,
-            epsilon = 1e-14_f64
-        ));
-        assert!(abs_diff_eq!(
-            solution.solution,
-            expected.solution,
-            epsilon = 1e-14_f64
-        ));
-    }
-
-    #[test]
-    fn test_pretty_print_variable() {
-        assert_eq!("x\u{2080}", _pretty_print_variable('x', 0, 1_f64));
-    }
-
-    #[test]
-    fn test_is_integer_solution() {
-        let s1 = Solution {
-            minima: -20.0,
-            solution: DVector::from_column_slice(&[0.0, 0.0, 5.0]),
-            basis: vec![0, 1, 2],
-        };
-        let s2 = Solution {
-            minima: -20.0,
-            solution: DVector::from_column_slice(&[0.0, 0.0, 5.1]),
-            basis: vec![0, 1, 2],
-        };
-        assert!(s1.is_integer_solution());
-        assert!(!s2.is_integer_solution());
-    }
-
-    #[test]
-    fn test_display_solution() {
-        let solution = Solution {
-            minima: -20.0,
-            solution: DVector::from_column_slice(&[0.0, 0.0, 5.0]),
-            basis: vec![0, 1, 2],
-        };
-        let expected = "Minima: -20\nSolution: {x₀: 0, x₁: 0, x₂: 5}\n";
-        assert_eq!(expected, solution.to_string());
-    }
-
-    #[test]
-    fn test_get_fractional_constraints() {
-        let s1 = Solution {
-            minima: -20.0,
-            solution: DVector::from_column_slice(&[1.6, 0.2, 5.5]),
-            basis: vec![0, 1, 2],
-        };
-        assert!(!s1.is_integer_solution());
-        let fractional_constraints = s1.get_fractional_constraints();
-        assert_eq!(fractional_constraints.get(&2), Some(&(5, 6)));
-        assert_eq!(fractional_constraints.get(&0), Some(&(1, 2)));
-        assert_eq!(fractional_constraints.get(&1), Some(&(0, 1)));
-    }
-
-    #[test]
-    fn test_branch_and_bound() {
-        let mut builder = LPBuilder::new();
-        builder.add_objective(vec![0, -1]);
-        builder.add_constraint(vec![-1, 1], LPOps::Lte, 1);
-        builder.add_constraint(vec![3, 2], LPOps::Lte, 12);
-        builder.add_constraint(vec![2, 3], LPOps::Lte, 12);
-        let solution = branch_and_bound(&builder);
-        assert_eq!(solution.clone().unwrap().minima, -2.0);
-        assert_eq!(solution.clone().unwrap().solution.row(1).x, 2.0);
+        let mut solver = lp_solver();
+        assert_eq!(solver.maximize(), Some(Rational64::from_integer(20)));
     }
 }

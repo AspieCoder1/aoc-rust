@@ -1,7 +1,7 @@
 //! # Linear programming solver
 //!
 //! Implements the [revised simplex method](<https://en.wikipedia.org/wiki/Revised_simplex_method>) to solve a linear programming problem.
-
+#![allow(unused)]
 use anyhow::Result;
 use itertools::Itertools;
 use nalgebra::{Const, DMatrix, DVector, Dyn, OMatrix, U1, Vector1, stack};

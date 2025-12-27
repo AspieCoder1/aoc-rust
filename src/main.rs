@@ -1,7 +1,7 @@
 use clap::Parser;
 use colored::Colorize;
 use std::fs::read_to_string;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 struct Solution {

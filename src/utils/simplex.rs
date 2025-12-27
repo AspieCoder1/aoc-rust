@@ -301,8 +301,8 @@ impl LinearProgrammingProblem {
             if factor.is_zero() {
                 continue;
             }
-            for j in 0..n_cols {
-                self.tableau[i][j] -= factor * pivot_row[j];
+            for (j, pivot) in pivot_row.iter().enumerate().take(n_cols) {
+                self.tableau[i][j] -= factor * pivot;
             }
         }
 
@@ -369,11 +369,11 @@ impl LinearProgrammingProblem {
         }
         self.remove_degenerate_artificials_from_basis();
 
-        let res = match self.simplex(p2) {
+        
+        match self.simplex(p2) {
             SimplexResult::Optimal => Some(self.rhs(p2)),
             SimplexResult::Unbounded => None,
-        };
-        res
+        }
     }
 
     pub fn solution_x(&self) -> Vec<Rational64> {

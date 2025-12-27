@@ -3,6 +3,7 @@
 //! Implements the [revised simplex method](<https://en.wikipedia.org/wiki/Revised_simplex_method>) to solve a linear programming problem.
 #![allow(unused)]
 use anyhow::Result;
+use approx::{abs_diff_eq, relative_eq};
 use itertools::Itertools;
 use nalgebra::{Const, DMatrix, DVector, Dyn, OMatrix, U1, Vector1, stack};
 use std::fmt;
@@ -81,7 +82,7 @@ impl LPBuilder {
             self.objective.iter().map(|&v| v as f64),
         );
         let constraints_flat = self.constraints.iter().flatten().map(|&v| v as f64);
-        let constraints_matrix = DMatrix::from_iterator(
+        let constraints_matrix = DMatrix::from_row_iterator(
             self.constraints.len(),
             self.constraints[0].len(),
             constraints_flat,
@@ -220,6 +221,8 @@ enum LPSolverError {
     UnboundedProblem,
     #[error("Problem has no solution.")]
     NoSolution,
+    #[error("Max iterations reached.")]
+    MaxIterationsReached,
 }
 
 impl LPSolver {
@@ -238,7 +241,7 @@ impl LPSolver {
         // Phase 1 generate the basic feasible solution
         let basic_feasible_solution = self._get_basic_feasible_solution()?;
 
-        // Generate initial basis
+        // Generate the initial basis
         let initial_b_columns = basic_feasible_solution
             .iter()
             .enumerate()
@@ -268,6 +271,7 @@ impl LPSolver {
         let mut n_columns = (0..final_index)
             .filter(|x| !b_columns.contains(x))
             .collect::<Vec<_>>();
+        let mut iterations = 0;
         loop {
             let basic_vars_matrix = self.constraints.select_columns(&b_columns);
             let non_basic_matrix = self.constraints.select_columns(&n_columns);
@@ -280,7 +284,14 @@ impl LPSolver {
             let reduced_costs =
                 non_basic_coeffs - non_basic_matrix.transpose() * simplex_multipliers;
 
-            if reduced_costs >= DVector::<f64>::zeros(reduced_costs.nrows()) {
+            // Deals with some issues where tolerance causes issues with the algorithm failing to stop
+            if reduced_costs >= DVector::<f64>::zeros(reduced_costs.nrows())
+                || abs_diff_eq!(
+                    reduced_costs,
+                    DVector::<f64>::zeros(reduced_costs.nrows()),
+                    epsilon = 1e-15_f64
+                )
+            {
                 let mut solution = DVector::<f64>::zeros(self.constraints.ncols());
                 let basis_solution = basis_matrix_inv * &self.b;
 
@@ -295,13 +306,30 @@ impl LPSolver {
             if pivot_column_vector <= DVector::<f64>::zeros(pivot_column_vector.nrows()) {
                 return Err(LPSolverError::UnboundedProblem);
             }
+
+            // leaving_index = argmin{xᵢ/dᵢ; dᵢ > 0}
             let leaving_col = (&basis_matrix_inv * &self.b)
-                .component_div(&pivot_column_vector)
-                .argmin()
+                .row_iter()
+                .zip(pivot_column_vector.row_iter())
+                .enumerate()
+                .filter(|&(_, (_, pivot_val))| pivot_val.x > 0_f64)
+                .map(|(i, (x, pivot_val))| (i, x.x / pivot_val.x))
+                .min_by(|&(_, a), &(i2, b)| a.total_cmp(&b))
+                .unwrap()
                 .0;
 
             b_columns[leaving_col] = entering_index;
             n_columns[reduced_costs.argmin().0] = b_columns[leaving_col];
+            iterations += 1;
+            if iterations == 10000 {
+                let mut solution = DVector::<f64>::zeros(self.constraints.ncols());
+                let basis_solution = basis_matrix_inv * &self.b;
+
+                for (i, &col) in b_columns.iter().enumerate() {
+                    solution.set_row(col, &basis_solution.row(i));
+                }
+                return Err(LPSolverError::MaxIterationsReached);
+            }
         }
     }
 }
@@ -329,8 +357,8 @@ mod tests {
 
         let expected = "Minimise: Z = -2x₀ + -3x₁ + -4x₂
 Subject to:
-  3x₀ + x₁ + 5x₂ + s₀ + a₀ = 10
-  2x₀ + 2x₁ + 3x₂ + s₁ + a₁ = 15\n";
+  3x₀ + 2x₁ + x₂ + s₀ + a₀ = 10
+  2x₀ + 5x₁ + 3x₂ + s₁ + a₁ = 15\n";
         assert_eq!(expected, solver.to_string());
     }
 
@@ -344,6 +372,19 @@ Subject to:
             solution: DVector::from_column_slice(&[0.0, 0.0, 5.0]),
         };
         assert_eq!(solution, expected);
+    }
+
+    #[test]
+    fn test_solve_tolerance_edge_case() {
+        let mut builder = LPBuilder::new();
+        builder.add_objective(vec![-2, -3, -4]);
+        builder.add_constraint(vec![3, 2, 1], LPOps::Eq, 10);
+        builder.add_constraint(vec![2, 5, 3], LPOps::Eq, 15);
+        let solver = builder.build().unwrap();
+        let solution = solver.solve().unwrap();
+        let expected = Solution { minima: -18.571428571428573, solution: DVector::from_column_slice(&[15_f64 / 7_f64, 0.0, 25_f64 / 7_f64]) };
+        assert!(abs_diff_eq!(solution.minima, expected.minima, epsilon = 1e-14_f64));
+        assert!(abs_diff_eq!(solution.solution, expected.solution, epsilon = 1e-14_f64));
     }
 
     #[test]

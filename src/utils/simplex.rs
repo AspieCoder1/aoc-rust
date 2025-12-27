@@ -2,10 +2,12 @@
 //!
 //! Implements the [revised simplex method](<https://en.wikipedia.org/wiki/Revised_simplex_method>) to solve a linear programming problem.
 #![allow(unused)]
+
 use anyhow::Result;
 use approx::{abs_diff_eq, relative_eq};
 use itertools::Itertools;
-use nalgebra::{Const, DMatrix, DVector, Dyn, OMatrix, U1, Vector1, stack};
+use nalgebra::{ComplexField, Const, DMatrix, DVector, Dyn, OMatrix, U1, Vector1, stack};
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::fmt::Formatter;
 use thiserror::Error;
@@ -17,7 +19,7 @@ enum LPOps {
     Lte,
 }
 
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 struct LPBuilder {
     objective: Vec<i64>,
     constraints: Vec<Vec<i64>>,
@@ -30,11 +32,17 @@ impl LPBuilder {
         Self::default()
     }
 
-    fn add_objective(&mut self, objective: Vec<i64>) {
+    fn add_objective(&mut self, objective: Vec<i64>) -> &mut Self {
         self.objective = objective;
+        self
     }
 
-    fn add_constraint(&mut self, mut constraint: Vec<i64>, mut op: LPOps, mut ans: i64) {
+    fn add_constraint(
+        &mut self,
+        mut constraint: Vec<i64>,
+        mut op: LPOps,
+        mut ans: i64,
+    ) -> &mut Self {
         // Need to ensure that RHS of constraint is positive
         if ans < 0 {
             ans *= -1;
@@ -47,9 +55,21 @@ impl LPBuilder {
                 LPOps::Lte => LPOps::Gte,
             }
         }
-        self.constraints.push(constraint);
-        self.ans.push(ans);
-        self.ops.push(op);
+
+        let constraint_exists = self
+            .constraints
+            .iter()
+            .enumerate()
+            .filter(|&(ind, c)| c == &constraint)
+            .map(|(ind, _)| ind)
+            .any(|ind| (self.ops[ind] == op && self.ans[ind] == ans));
+
+        if !constraint_exists {
+            self.constraints.push(constraint);
+            self.ans.push(ans);
+            self.ops.push(op);
+        }
+        self
     }
 
     #[allow(clippy::toplevel_ref_arg)]
@@ -110,6 +130,7 @@ impl LPBuilder {
 }
 
 #[derive(Debug, PartialEq)]
+#[derive(Clone)]
 struct Solution {
     minima: f64,
     solution: OMatrix<f64, Dyn, U1>,
@@ -118,6 +139,11 @@ struct Solution {
 impl Solution {
     fn is_integer_solution(&self) -> bool {
         self.solution.iter().all(|&v| v.round() == v)
+    }
+
+    /// Generates the new fractional constraints to be added to the LP problem
+    fn get_fractional_constraints(&self) -> HashMap<usize, (i64, i64)> {
+        self.solution.iter().enumerate().filter(|&(ind, v)| v.fract() != 0_f64).map(|(ind, v)|(ind, (v.floor() as i64, v.ceil() as i64))).collect()
     }
 }
 
@@ -334,6 +360,58 @@ impl LPSolver {
     }
 }
 
+fn branch_and_bound(initial_lp: &LPBuilder) -> Option<Solution> {
+    let mut queue = VecDeque::from(vec![initial_lp.clone()]);
+    let mut best_solution: Option<Solution> = None;
+    let mut best_minima = f64::MAX;
+    let mut iterations = 0;
+
+    while let Some(lp) = queue.pop_front() {
+        let solver = lp.clone().build().unwrap();
+        let solution = solver.solve();
+        match solution {
+            Ok(solution) => {
+                if best_minima <= solution.minima {
+                    continue;
+                }
+                if solution.is_integer_solution() {
+                    best_minima = solution.minima;
+                    best_solution = Some(solution);
+                    continue;
+                }
+
+                // Performing strong branching by exploring each fractional constraint
+                for (variable, (lower_bound, upper_bound)) in solution.get_fractional_constraints().iter() {
+                    let mut constraint_eq = vec![0; solution.solution.nrows()];
+                    constraint_eq[*variable] = 1;
+
+                    // Generate upper bound sub-problem
+                    let mut branched_problem_upper = lp.clone();
+                    branched_problem_upper.add_constraint(constraint_eq.clone(), LPOps::Gte, *upper_bound);
+                    if branched_problem_upper != lp {
+                        queue.push_back(branched_problem_upper);
+                    }
+
+                    // Generate lower bound sub-problem
+                    let mut branched_problem_lower = lp.clone();
+                    branched_problem_lower.add_constraint(constraint_eq.clone(), LPOps::Lte, *lower_bound);
+                    if branched_problem_lower != lp {
+                        queue.push_back(branched_problem_lower);
+                    }
+                }
+
+            }
+            Err(_) => continue,
+        }
+        iterations += 1;
+        if iterations == 10000 {
+            println!("Max iterations reached.");
+            break;
+        }
+    }
+    best_solution
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,6 +427,17 @@ mod tests {
 
     fn lp_solver() -> LPSolver {
         lp_builder().build().unwrap()
+    }
+
+    #[test]
+    fn test_build() {
+        let b1 = lp_builder();
+        let b2 = LPBuilder::default()
+            .add_objective(vec![-2, -3, -4])
+            .add_constraint(vec![3, 2, 1], LPOps::Lte, 10)
+            .add_constraint(vec![2, 5, 3], LPOps::Lte, 15)
+            .clone();
+        assert_eq!(b1, b2);
     }
 
     #[test]
@@ -382,9 +471,20 @@ Subject to:
         builder.add_constraint(vec![2, 5, 3], LPOps::Eq, 15);
         let solver = builder.build().unwrap();
         let solution = solver.solve().unwrap();
-        let expected = Solution { minima: -18.571428571428573, solution: DVector::from_column_slice(&[15_f64 / 7_f64, 0.0, 25_f64 / 7_f64]) };
-        assert!(abs_diff_eq!(solution.minima, expected.minima, epsilon = 1e-14_f64));
-        assert!(abs_diff_eq!(solution.solution, expected.solution, epsilon = 1e-14_f64));
+        let expected = Solution {
+            minima: -18.571428571428573,
+            solution: DVector::from_column_slice(&[15_f64 / 7_f64, 0.0, 25_f64 / 7_f64]),
+        };
+        assert!(abs_diff_eq!(
+            solution.minima,
+            expected.minima,
+            epsilon = 1e-14_f64
+        ));
+        assert!(abs_diff_eq!(
+            solution.solution,
+            expected.solution,
+            epsilon = 1e-14_f64
+        ));
     }
 
     #[test]
@@ -414,5 +514,30 @@ Subject to:
         };
         let expected = "Minima: -20\nSolution: {x₀: 0, x₁: 0, x₂: 5}\n";
         assert_eq!(expected, solution.to_string());
+    }
+
+    #[test]
+    fn test_get_fractional_constraints() {
+        let s1 = Solution {
+            minima: -20.0,
+            solution: DVector::from_column_slice(&[1.6, 0.2, 5.5]),
+        };
+        assert!(!s1.is_integer_solution());
+        let fractional_constraints = s1.get_fractional_constraints();
+        assert_eq!(fractional_constraints.get(&2), Some(&(5, 6)));
+        assert_eq!(fractional_constraints.get(&0), Some(&(1, 2)));
+        assert_eq!(fractional_constraints.get(&1), Some(&(0, 1)));
+    }
+
+    #[test]
+    fn test_branch_and_bound() {
+        let mut builder = LPBuilder::new();
+        builder.add_objective(vec![0, -1]);
+        builder.add_constraint(vec![-1, 1], LPOps::Lte, 1);
+        builder.add_constraint(vec![3, 2], LPOps::Lte, 12);
+        builder.add_constraint(vec![2, 3], LPOps::Lte, 12);
+        let solution = branch_and_bound(&builder);
+        assert_eq!(solution.clone().unwrap().minima, -2.0);
+        assert_eq!(solution.clone().unwrap().solution.row(1).x, 2.0);
     }
 }

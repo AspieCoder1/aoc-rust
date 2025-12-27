@@ -5,19 +5,16 @@ use std::collections::HashMap;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(usize, usize)> {
-    let input = parse_input(INPUT_NUM)?;
+pub fn main(data: &str) -> Result<(usize, usize)> {
+    let input = parse_input(data)?;
 
     Ok((part1(&input), part2(&input)))
 }
 
 type Tile = (usize, usize);
 
-pub fn parse_input(input_num: usize) -> Result<Vec<Tile>> {
-    Ok([
-        include_str!("inputs/day09.inp"),
-        include_str!("test_inputs/day09.inp1"),
-    ][input_num]
+pub fn parse_input(input: &str) -> Result<Vec<Tile>> {
+    Ok(input
         .lines()
         .map(|line| {
             let (x, y) = line.split_once(',').unwrap();

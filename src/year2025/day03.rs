@@ -2,8 +2,8 @@ use anyhow::Result;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(u64, u64)> {
-    let input = parse_input(INPUT_NUM).unwrap();
+pub fn main(data: &str) -> Result<(u64, u64)> {
+    let input = parse_input(data).unwrap();
     let (part1, part2) = solve(input);
 
     Ok((part1, part2))
@@ -18,11 +18,8 @@ pub fn solve(input: Vec<Vec<u32>>) -> (u64, u64) {
 
 type NestedU32 = Vec<Vec<u32>>;
 
-pub fn parse_input(input: usize) -> Result<Vec<Vec<u32>>, String> {
-    [
-        include_str!("inputs/day03.inp"),
-        include_str!("test_inputs/day03.inp1"),
-    ][input]
+pub fn parse_input(input: &str) -> Result<Vec<Vec<u32>>, String> {
+    input
         .lines()
         .map(|line| {
             line.chars()

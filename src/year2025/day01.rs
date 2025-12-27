@@ -3,19 +3,16 @@ use std::str::FromStr;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(i64, i64)> {
-    let input = parse_input(INPUT_NUM)?;
+pub fn main(input: &str) -> Result<(i64, i64)> {
+    let input = parse_input(input)?;
 
     let (part1, part2) = solve(&input);
 
     Ok((part1, part2))
 }
 
-pub fn parse_input(input: usize) -> Result<Vec<Command>> {
-    [
-        include_str!("inputs/day01.inp"),
-        include_str!("test_inputs/day01.inp1"),
-    ][input]
+pub fn parse_input(input: &str) -> Result<Vec<Command>> {
+    input
         .lines()
         .map(str::parse)
         .collect()

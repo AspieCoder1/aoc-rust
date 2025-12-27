@@ -3,8 +3,8 @@ use std::str::FromStr;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(u64, u64)> {
-    let input = parse_input(INPUT_NUM)?;
+pub fn main(input: &str) -> Result<(u64, u64)> {
+    let input = parse_input(input)?;
 
     let (part1, part2) = solve(input);
 
@@ -18,14 +18,8 @@ pub fn solve(input: Vec<IdRange>) -> (u64, u64) {
     (part1, part2)
 }
 
-pub fn parse_input(input: usize) -> Result<Vec<IdRange>> {
-    [
-        include_str!("inputs/day02.inp"),
-        include_str!("test_inputs/day02.inp1"),
-    ][input]
-        .split(",")
-        .map(str::parse)
-        .collect()
+pub fn parse_input(input: &str) -> Result<Vec<IdRange>> {
+    input.split(",").map(str::parse).collect()
 }
 
 #[derive(Debug, Clone)]

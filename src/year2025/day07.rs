@@ -3,19 +3,16 @@ use std::collections::HashSet;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(u32, u64)> {
-    let input = parse_input(INPUT_NUM)?;
+pub fn main(data: &str) -> Result<(u32, u64)> {
+    let input = parse_input(data)?;
     let part1 = part1(&input);
     let part2 = part2(&input);
 
     Ok((part1, part2))
 }
 
-pub fn parse_input(input_num: usize) -> Result<Vec<Vec<char>>> {
-    Ok([
-        include_str!("inputs/day07.inp"),
-        include_str!("test_inputs/day07.inp1"),
-    ][input_num]
+pub fn parse_input(input: &str) -> Result<Vec<Vec<char>>> {
+    Ok(input
         .lines()
         .map(|line| line.chars().collect::<Vec<_>>())
         .collect())

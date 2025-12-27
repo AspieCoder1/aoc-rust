@@ -2,21 +2,15 @@ use anyhow::Result;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(u32, u32)> {
-    let input = parse_input(INPUT_NUM)?;
+pub fn main(data: &str) -> Result<(u32, u32)> {
+    let input = parse_input(data)?;
 
     Ok((part1(&input), part2(&input)))
 }
 
-pub fn parse_input(input_num: usize) -> Result<Vec<Vec<char>>> {
+pub fn parse_input(input: &str) -> Result<Vec<Vec<char>>> {
     // Read input
-    let mut input: Vec<Vec<char>> = [
-        include_str!("inputs/day04.inp"),
-        include_str!("test_inputs/day04.inp1"),
-    ][input_num]
-        .lines()
-        .map(|line| line.chars().collect())
-        .collect();
+    let mut input: Vec<Vec<char>> = input.lines().map(|line| line.chars().collect()).collect();
 
     // Add border to prevent boundary checks
     for row in &mut input {

@@ -5,17 +5,14 @@ use std::str::FromStr;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(usize, usize)> {
-    let input = parse_input(INPUT_NUM)?;
+pub fn main(data: &str) -> Result<(usize, usize)> {
+    let input = parse_input(data)?;
 
     Ok((part1(&input), part2(&input)))
 }
 
-fn parse_input(input_num: usize) -> Result<Vec<Input>> {
-    Ok([
-        include_str!("inputs/day10.inp"),
-        include_str!("test_inputs/day10.inp1"),
-    ][input_num]
+fn parse_input(input: &str) -> Result<Vec<Input>> {
+    Ok(input
         .lines()
         .map(|line| line.parse::<Input>().unwrap())
         .collect::<Vec<_>>())

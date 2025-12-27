@@ -5,16 +5,13 @@ use std::str::FromStr;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(u32, u64)> {
-    let input = parse_input(INPUT_NUM)?;
+pub fn main(data: &str) -> Result<(u32, u64)> {
+    let input = parse_input(data)?;
     Ok((part1(&input), part2(&input)))
 }
 
-pub fn parse_input(input_num: usize) -> Result<Input> {
-    [
-        include_str!("inputs/day05.inp"),
-        include_str!("test_inputs/day05.inp1"),
-    ][input_num]
+pub fn parse_input(input: &str) -> Result<Input> {
+    input
         .parse()
 }
 

@@ -7,21 +7,18 @@ use std::str::FromStr;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(usize, usize)> {
-    let (num_pairs, points) = parse_input(INPUT_NUM)?;
+pub fn main(data: &str) -> Result<(usize, usize)> {
+    let (num_pairs, points) = parse_input(data)?;
 
     Ok((part1(&points, num_pairs), part2(&points)))
 }
 
-pub fn parse_input(input_num: usize) -> Result<(usize, Vec<Point>)> {
-    let points: Vec<Point> = [
-        include_str!("inputs/day08.inp"),
-        include_str!("test_inputs/day08.inp1"),
-    ][input_num]
+pub fn parse_input(input: &str) -> Result<(usize, Vec<Point>)> {
+    let points: Vec<Point> = input
         .lines()
         .map(str::parse::<Point>)
         .collect::<Result<Vec<_>>>()?;
-    let num_pairs: usize = if input_num == 1 { 10 } else { 1000 };
+    let num_pairs: usize = if INPUT_NUM == 1 { 10 } else { 1000 };
 
     Ok((num_pairs, points))
 }

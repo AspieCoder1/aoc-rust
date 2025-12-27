@@ -2,17 +2,13 @@ use anyhow::Result;
 
 const INPUT_NUM: usize = 0;
 
-pub fn main() -> Result<(u64, u64)> {
-    let input = parse_input(INPUT_NUM)?;
+pub fn main(data: &str) -> Result<(u64, u64)> {
+    let input = parse_input(data)?;
 
     Ok((part1(&input), part2(&input)))
 }
 
-pub fn parse_input(input_num: usize) -> Result<Vec<Calculation>> {
-    let input = [
-        include_str!("inputs/day06.inp"),
-        include_str!("test_inputs/day06.inp1"),
-    ][input_num];
+pub fn parse_input(input: &str) -> Result<Vec<Calculation>> {
     let _max_length = input.lines().map(|line| line.len()).max().unwrap();
     let mut data = input
         .lines()

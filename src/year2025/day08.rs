@@ -1,3 +1,6 @@
+//! Advent of Code 2025 Day 8
+//! Link: <https://adventofcode.com/2025/day/8>
+//!
 use crate::utils::disjointset::DisjointSet;
 use anyhow::Error;
 use anyhow::Result;

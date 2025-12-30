@@ -1,3 +1,6 @@
+//! Advent of Code 2025 Day 10
+//! Link: <https://adventofcode.com/2025/day/10>
+//!
 use crate::utils::simplex::{LPBuilder, LPOps};
 use anyhow::{Error, Result};
 use regex::RegexBuilder;

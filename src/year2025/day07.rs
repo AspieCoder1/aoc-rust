@@ -1,3 +1,6 @@
+//! Advent of Code 2025 Day 7
+//! Link: <https://adventofcode.com/2025/day/7>
+//!
 use anyhow::Result;
 use std::collections::HashSet;
 

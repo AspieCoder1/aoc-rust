@@ -1,3 +1,6 @@
+//! Advent of Code 2025 Day 4
+//! Link: <https://adventofcode.com/2025/day/4>
+//!
 use anyhow::Result;
 
 pub fn main(data: &str) -> Result<(u32, u32)> {

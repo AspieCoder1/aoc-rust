@@ -1,3 +1,6 @@
+//! Advent of Code 2025 Day 5
+//! Link: <https://adventofcode.com/2025/day/5>
+//!
 use anyhow::{Error, Result};
 use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;

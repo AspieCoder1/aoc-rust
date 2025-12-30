@@ -1,3 +1,6 @@
+//! Advent of Code 2025 Day 11
+//! Link: <https://adventofcode.com/2025/day/11>
+//!
 use anyhow::Result;
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};

@@ -1,3 +1,6 @@
+//! Advent of Code 2025 Day 9
+//! Link: <https://adventofcode.com/2025/day/9>
+//!
 use crate::utils::grid::{Grid, Pos};
 use anyhow::Result;
 use itertools::Itertools;

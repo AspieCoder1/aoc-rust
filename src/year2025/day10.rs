@@ -52,9 +52,10 @@ fn branch_and_bound(root: LPBuilder, n: usize) -> Option<i64> {
         };
         let node_lb = obj.ceil();
         if let Some(best_val) = best
-            && node_lb >= best_val.into() {
-                continue;
-            }
+            && node_lb >= best_val.into()
+        {
+            continue;
+        }
         let x = lp.solution_x();
         if let Some((k, xk)) = x.iter().enumerate().find(|(_, v)| !v.is_integer()) {
             let lo = xk.floor().to_integer();
@@ -84,10 +85,9 @@ fn part2(_input: &[Input]) -> usize {
             Some(solution) => {
                 acc += solution;
             }
-            None => continue
+            None => continue,
         }
     }
-    println!("Total num of button presses: {}", acc);
     acc as usize
 }
 

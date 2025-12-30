@@ -1,6 +1,5 @@
 extern crate core;
 
-
 macro_rules! library {
     ($year:tt $description:literal $($day:tt),*) => {
         #[doc = concat!("# ", $description)]

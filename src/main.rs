@@ -29,7 +29,7 @@ fn main() {
     let year = args.year;
     let day = args.day;
 
-    let solutions = [year2025()];
+    let solutions = [year2024(), year2025()];
 
     let (star, duration) = solutions
         .iter()
@@ -77,3 +77,4 @@ macro_rules! run {
 }
 
 run!(year2025 day01, day02, day03, day04, day05, day06, day07, day08, day09, day10, day11, day12);
+run!(year2024 day01, day02);

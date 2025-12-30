@@ -1,5 +1,5 @@
-///! Advent of Code 2025 Day 12
-///! Link: <https://adventofcode.com/2025/day/12>
+//! Advent of Code 2025 Day 12
+//! Link: <https://adventofcode.com/2025/day/12>
 use crate::utils::grid::Grid;
 use anyhow::{Error, Result};
 use std::str::FromStr;
@@ -11,7 +11,7 @@ pub fn main(input_data: &str) -> Result<(usize, usize)> {
 }
 
 fn parse_input(data: &str) -> Result<Input> {
-    Ok(data.parse()?)
+    data.parse()
 }
 
 fn part1(input: &Input) -> usize {
@@ -76,13 +76,9 @@ impl FromStr for Input {
             .unwrap()
             .lines()
             .map(|s| {
-                let (region, required_presents) = s.split_once(": ").expect(
-                    format!(
-                        "Unable to split region and required presents from line {}",
-                        s
-                    )
-                    .as_str(),
-                );
+                let (region, required_presents) = s
+                    .split_once(": ")
+                    .expect("Unable to split region and required presents");
                 let (width, height) = region.split_once("x").unwrap();
                 let width = width.parse::<usize>().unwrap();
                 let height = height.parse::<usize>().unwrap();

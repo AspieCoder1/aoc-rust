@@ -19,7 +19,7 @@ fn parse_input(input: &str) -> Result<Vec<Input>> {
 
 fn part1(input: &[Input]) -> usize {
     let mut acc = 0;
-    // Brute force DFS initial solution
+    // Brute force BFS initial solution
     for input in input {
         let mut visited: HashSet<usize> = HashSet::new();
         let mut queue: VecDeque<(usize, usize)> = VecDeque::from([(0, 0)]);

@@ -68,16 +68,14 @@ fn topological_sort<'a>(graph: &HashMap<&'a str, Vec<&'a str>>) -> Vec<&'a str> 
     nodes.extend(graph.values().flatten());
 
     let mut zero_indegree_nodes = nodes
-        .difference(&HashSet::from(
-            graph.values().cloned().flatten().collect::<HashSet<_>>(),
-        ))
+        .difference(&graph.values().flatten().cloned().collect::<HashSet<_>>())
         .cloned()
         .collect::<Vec<_>>();
 
     while let Some(node) = zero_indegree_nodes.pop() {
         topological_order.push(node);
 
-        let edges = graph.remove(&node).unwrap_or(Vec::new());
+        let edges = graph.remove(&node).unwrap_or_default();
         for edge in edges {
             if !graph.values().flatten().contains(&edge) {
                 zero_indegree_nodes.push(edge);

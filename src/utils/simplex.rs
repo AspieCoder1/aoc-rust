@@ -115,8 +115,8 @@ impl LPBuilder {
 
         // Constraints
         for i in 0..m {
-            for j in 0..n_x {
-                t[i][j] = Rational64::from_integer(self.constraints[i][j])
+            for (j, tableau_cell) in t[i].iter_mut().enumerate().take(n_x) {
+                *tableau_cell = Rational64::from_integer(self.constraints[i][j]);
             }
 
             match self.ops[i] {
@@ -145,16 +145,16 @@ impl LPBuilder {
         }
 
         // Phase 2 objective: -c^T x + z = 0
-        for j in 0..n_x {
-            t[p2_row][j] = Rational64::from_integer(-self.objective[j]);
+        for (j, tableau_cell) in t[p2_row].iter_mut().enumerate().take(n_x) {
+            *tableau_cell = Rational64::from_integer(-self.objective[j]);
         }
         t[p2_row][z_col] = Rational64::ONE;
         active[p2_row] = z_col;
 
         // Phase 1 objective: (sum artificials) + w = 0  => w = -sum a
         // Initialise the coefficients on artificials to +1, and w to +1.
-        for j in art_start..z_col {
-            t[p1_row][j] = Rational64::ONE;
+        for tableau_cell in t[p1_row].iter_mut().take(z_col).skip(art_start) {
+            *tableau_cell = Rational64::ONE;
         }
         t[p1_row][w_col] = Rational64::ONE;
         active[p1_row] = w_col;
@@ -369,7 +369,6 @@ impl LinearProgrammingProblem {
         }
         self.remove_degenerate_artificials_from_basis();
 
-        
         match self.simplex(p2) {
             SimplexResult::Optimal => Some(self.rhs(p2)),
             SimplexResult::Unbounded => None,

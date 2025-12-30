@@ -123,7 +123,7 @@ impl FromStr for Point {
 }
 
 #[derive(Debug, Clone)]
-struct Input {
+pub struct Input {
     num_pairs: usize,
     points: Vec<Point>,
 }

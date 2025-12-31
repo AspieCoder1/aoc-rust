@@ -1,4 +1,5 @@
 //! Advent of Code 2024 Day 1
+//!
 //! Link: <https://adventofcode.com/2024/day/1>
 
 use anyhow::{Error, Result};
@@ -17,9 +18,8 @@ fn parse_input(input: &str) -> Result<Input> {
 
 fn part1(input: &Input) -> usize {
     let mut acc = 0;
-    let mut left_heap = BinaryHeap::from_iter(input.left_list.iter().copied().map(|s| Reverse(s)));
-    let mut right_heap =
-        BinaryHeap::from_iter(input.right_list.iter().copied().map(|s| Reverse(s)));
+    let mut left_heap = BinaryHeap::from_iter(input.left_list.iter().copied().map(Reverse));
+    let mut right_heap = BinaryHeap::from_iter(input.right_list.iter().copied().map(Reverse));
 
     while let (Some(Reverse(l)), Some(Reverse(r))) = (left_heap.pop(), right_heap.pop()) {
         acc += l.abs_diff(r);

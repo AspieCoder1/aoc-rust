@@ -1,4 +1,5 @@
 //! Advent of Code 2024 Day 2
+//!
 //! Link: <https://adventofcode.com/2024/day/2>
 
 use anyhow::Result;
@@ -55,12 +56,8 @@ fn check_report_is_safe(report: &[i32]) -> bool {
         .windows(2)
         .map(|chunk| chunk[0] - chunk[1])
         .collect::<Vec<_>>();
-    let invalid_changes = diffs
-        .iter()
-        .by_ref()
-        .find(|&&x| x.abs() == 0 || 3 < x.abs())
-        .is_some();
-    let all_pos_changes = diffs.iter().by_ref().all(|&x| x >= 0);
+    let invalid_changes = diffs.iter().by_ref().any(|&x| x.abs() == 0 || 3 < x.abs());
+    let all_pos_changes = diffs.iter().by_ref().all(|&x| x > 0);
     let all_neg_changes = diffs.iter().by_ref().all(|&x| x < 0);
 
     !invalid_changes && (all_pos_changes || all_neg_changes)

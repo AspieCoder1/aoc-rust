@@ -176,6 +176,33 @@ where
         }
         res
     }
+
+    pub fn dfs_one_direction(
+        self,
+        start_pos: Pos,
+        direction: (isize, isize),
+        n_elements: usize,
+    ) -> Vec<T> {
+        let (di, dj) = direction;
+        let mut elements = Vec::new();
+
+        let mut i_new = start_pos.0 as isize;
+        let mut j_new = start_pos.1 as isize;
+        for _ in 0..n_elements {
+            if i_new < 0
+                || i_new >= self.height as isize
+                || j_new < 0
+                || j_new >= self.width as isize
+            {
+                break;
+            }
+            let pos = Pos(i_new as usize, j_new as usize);
+            elements.push(self[pos].clone());
+            i_new += di;
+            j_new += dj;
+        }
+        elements
+    }
 }
 
 impl<T> From<Vec<Vec<T>>> for Grid<T> {
@@ -577,7 +604,7 @@ impl<T> Grid<T> {
         }
 
         let mut paths_crossed = 0;
-        for j in pos.1..self.width  {
+        for j in pos.1..self.width {
             // Need to calculate where crossing a vertical edge
             if self._check_is_horizontal_boundary(Pos(pos.0, j), &boundary_function) {
                 paths_crossed += 1;

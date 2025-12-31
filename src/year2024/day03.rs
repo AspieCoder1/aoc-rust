@@ -1,7 +1,7 @@
-//! Advent of Code 2024 - Day 03
+//! Advent of Code 2024 Day 3
+//!
 //! Link: <https://adventofcode.com/2024/day/3>
 use anyhow::Result;
-use itertools::Itertools;
 use regex::Regex;
 
 pub fn main(input_data: &str) -> Result<(usize, usize)> {
@@ -21,14 +21,14 @@ fn parse_input(input_data: &str) -> Result<Vec<Instruction>> {
                 if let Some(mul) = mul_capture {
                     let a = mul[1].parse::<usize>().unwrap();
                     let b = mul[2].parse::<usize>().unwrap();
-                    return Instruction::Mul(a, b);
+                    Instruction::Mul(a, b)
                 } else {
                     panic!("Invalid mul capture");
                 }
             } else if cap.get(2).is_some() {
-                return Instruction::DoNot;
+                Instruction::DoNot
             } else {
-                return Instruction::Do;
+                Instruction::Do
             }
         })
         .collect::<Vec<_>>())

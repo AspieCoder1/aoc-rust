@@ -51,7 +51,7 @@ fn part1(grid: &Grid<char>) -> usize {
     antinodes.len()
 }
 
-fn part2(grid: &Grid<char>) -> usize {
+fn part2(_grid: &Grid<char>) -> usize {
     0
 }
 

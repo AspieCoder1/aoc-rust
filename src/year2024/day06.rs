@@ -15,7 +15,7 @@ pub fn main(input_data: &str) -> Result<(usize, usize)> {
 
 fn part1(input: &Grid<char>) -> usize {
     let start_pos = input.all_positions(|&c| c == '^').next().unwrap();
-    get_visited_location(&input, (start_pos.0, start_pos.1)).len()
+    get_visited_location(input, (start_pos.0, start_pos.1)).len()
 }
 
 fn get_visited_location(input: &Grid<char>, start_pos: (usize, usize)) -> HashSet<(usize, usize)> {

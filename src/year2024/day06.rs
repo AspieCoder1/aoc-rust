@@ -36,14 +36,7 @@ fn get_visited_location(input: &Grid<char>, start_pos: (usize, usize)) -> HashSe
 
         if input[(new_i as usize, new_j as usize)] == '#' {
             // Perform the right turn
-            let new_direction = match direction {
-                (-1, 0) => (0, 1),
-                (0, 1) => (1, 0),
-                (1, 0) => (0, -1),
-                (0, -1) => (-1, 0),
-                _ => panic!("Invalid direction"),
-            };
-            direction = new_direction;
+            direction = get_new_direction(direction);
         }
         curr_i += direction.0;
         curr_j += direction.1;
@@ -74,17 +67,20 @@ fn check_does_loop(input: &Grid<char>, start_pos: (usize, usize)) -> bool {
                 turns.insert((curr_i, curr_j, direction));
             }
             // Perform the right turn
-            let new_direction = match direction {
-                (-1, 0) => (0, 1),
-                (0, 1) => (1, 0),
-                (1, 0) => (0, -1),
-                (0, -1) => (-1, 0),
-                _ => panic!("Invalid direction"),
-            };
-            direction = new_direction;
+            direction = get_new_direction(direction);
         }
         curr_i += direction.0;
         curr_j += direction.1;
+    }
+}
+
+fn get_new_direction(curr_direction: (isize, isize)) -> (isize, isize) {
+    match curr_direction {
+        (-1, 0) => (0, 1),
+        (0, 1) => (1, 0),
+        (1, 0) => (0, -1),
+        (0, -1) => (-1, 0),
+        _ => panic!("Invalid direction"),
     }
 }
 

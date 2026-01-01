@@ -5,7 +5,6 @@
 use anyhow::Result;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::iter::repeat_n;
 
 pub fn main(input: &str) -> Result<(usize, usize)> {
     let data = parse_input(input)?;
@@ -49,9 +48,9 @@ fn part1(input: &[FileBlock]) -> usize {
 
     for block in input {
         if block.file_id == -1 {
-            free_blocks.push(Reverse(block.clone()));
+            free_blocks.push(Reverse(*block));
         } else {
-            file_blocks.push(block.clone());
+            file_blocks.push(*block);
         }
     }
 
@@ -71,9 +70,7 @@ fn part1(input: &[FileBlock]) -> usize {
                     end: empty_block.end,
                     file_id: curr_file.file_id,
                 };
-                let mut updated_file = curr_file.clone();
-                updated_file.end -= free_space;
-                curr_file = updated_file;
+                curr_file.end -= free_space;
                 file_blocks.push(new_file);
             }
             std::cmp::Ordering::Equal => {
@@ -120,6 +117,7 @@ struct FileBlock {
 }
 
 impl FileBlock {
+    #[allow(unused)]
     fn new(start: usize, end: usize, file_id: isize) -> Self {
         Self {
             start,

@@ -15,14 +15,7 @@ pub fn main(input_data: &str) -> Result<(usize, usize)> {
 }
 
 fn part1(grid: &Grid<char>) -> usize {
-    let mut antenna_positions: HashMap<char, Vec<(isize, isize)>> = HashMap::new();
-    for (Pos(y, x), &cell) in grid.enumerate_by_pos().filter(|&(_, cell)| *cell != '.') {
-        antenna_positions
-            .entry(cell)
-            .or_default()
-            .push((y as isize, x as isize))
-    }
-
+    let antenna_positions: HashMap<char, Vec<(isize, isize)>> = get_antenna_positions(grid);
     let mut antinodes: HashSet<(isize, isize)> = HashSet::new();
 
     for (_, positions) in antenna_positions.iter() {
@@ -51,8 +44,55 @@ fn part1(grid: &Grid<char>) -> usize {
     antinodes.len()
 }
 
-fn part2(_grid: &Grid<char>) -> usize {
-    0
+fn part2(grid: &Grid<char>) -> usize {
+    let antenna_positions: HashMap<char, Vec<(isize, isize)>> = get_antenna_positions(grid);
+    let mut antinodes: HashSet<(isize, isize)> = HashSet::new();
+
+    for (_, positions) in antenna_positions.iter() {
+        for (a, b) in positions.iter().tuple_combinations() {
+            let (di, dj) = (a.0 - b.0, a.1 - b.1);
+            let mut p1 = (a.0, a.1);
+            let mut p2 = (b.0, b.1);
+
+            loop {
+                let p1_in_bounds = p1.0 >= 0
+                    && p1.0 < grid.height as isize
+                    && p1.1 >= 0
+                    && p1.1 < grid.width as isize;
+                let p2_in_bounds = p2.0 >= 0
+                    && p2.0 < grid.height as isize
+                    && p2.1 >= 0
+                    && p2.1 < grid.width as isize;
+
+                if !p1_in_bounds && !p2_in_bounds {
+                    break;
+                }
+
+                if p1_in_bounds {
+                    antinodes.insert(p1);
+                }
+
+                if p2_in_bounds {
+                    antinodes.insert(p2);
+                }
+
+                p1 = (p1.0 + di, p1.1 + dj);
+                p2 = (p2.0 - di, p2.1 - dj);
+            }
+        }
+    }
+    antinodes.len()
+}
+
+fn get_antenna_positions(grid: &Grid<char>) -> HashMap<char, Vec<(isize, isize)>> {
+    let mut antenna_positions: HashMap<char, Vec<(isize, isize)>> = HashMap::new();
+    for (Pos(y, x), &cell) in grid.enumerate_by_pos().filter(|&(_, cell)| *cell != '.') {
+        antenna_positions
+            .entry(cell)
+            .or_default()
+            .push((y as isize, x as isize))
+    }
+    antenna_positions
 }
 
 #[cfg(test)]
@@ -78,5 +118,11 @@ mod tests {
     fn test_part1() {
         let input = Grid::<char>::from_str(EXAMPLE).unwrap();
         assert_eq!(part1(&input), 14);
+    }
+
+    #[test]
+    fn test_part2() {
+        let input = Grid::<char>::from_str(EXAMPLE).unwrap();
+        assert_eq!(part2(&input), 34);
     }
 }

@@ -1,3 +1,7 @@
+//! Disjoint Set Data Structure
+//!
+//! Implementation of a disjoint set data structure using union by size.
+
 #[allow(unused)]
 #[derive(Debug)]
 pub(crate) struct Node<T> {

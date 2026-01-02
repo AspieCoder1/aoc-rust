@@ -4,6 +4,7 @@
 
 use crate::utils::grid::Grid;
 use anyhow::Result;
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::str::FromStr;
 
@@ -85,19 +86,17 @@ fn get_new_direction(curr_direction: (isize, isize)) -> (isize, isize) {
 }
 
 fn part2(input: &Grid<char>) -> usize {
-    let mut acc = 0;
     let start_pos = input.all_positions(|&c| c == '^').next().unwrap();
     let possible_obstruction_locations = input.all_positions(|&c| c == '.');
 
-    for pos in possible_obstruction_locations {
-        let mut new_grid = input.clone();
-        new_grid[(pos.0, pos.1)] = '#';
-
-        if check_does_loop(&new_grid, (start_pos.0, start_pos.1)) {
-            acc += 1;
-        }
-    }
-    acc
+    possible_obstruction_locations
+        .par_bridge()
+        .map(|pos| {
+            let mut new_grid = input.clone();
+            new_grid[(pos.0, pos.1)] = '#';
+            check_does_loop(&new_grid, (start_pos.0, start_pos.1)) as usize
+        })
+        .sum::<usize>()
 }
 
 #[cfg(test)]

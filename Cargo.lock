@@ -96,6 +96,7 @@ dependencies = [
  "num",
  "paste",
  "pretty_assertions",
+ "rayon",
  "regex",
  "thiserror",
 ]

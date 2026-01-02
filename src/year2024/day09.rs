@@ -2,13 +2,14 @@
 //!
 //! Link: <https://adventofcode.com/2024/day/9>
 
+use crate::utils::intervaltree::IntervalTree;
 use anyhow::Result;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
 pub fn main(input: &str) -> Result<(usize, usize)> {
     let data = parse_input(input)?;
-    Ok((part1(&data), part2()))
+    Ok((part1(&data), part2(&data)))
 }
 
 fn parse_input(input: &str) -> Result<Vec<FileBlock>> {
@@ -105,8 +106,43 @@ fn part1(input: &[FileBlock]) -> usize {
     file_blocks.iter().map(|f| f.check_sum()).sum()
 }
 
-fn part2() -> usize {
-    0
+fn part2(input: &[FileBlock]) -> usize {
+    let mut empty_blocks = IntervalTree::<usize>::new();
+    let mut file_blocks = Vec::new();
+    let mut defragged_disk = Vec::new();
+
+    for block in input {
+        if block.file_id == -1 {
+            empty_blocks.insert(block.start, block.end);
+        } else {
+            file_blocks.push(block.clone());
+        }
+    }
+
+    while let Some(mut file_block) = file_blocks.pop() {
+        let intervals_before = empty_blocks.find_all_before(file_block.start);
+        for interval in intervals_before {
+            if interval.size() >= file_block.size() {
+                // Delete interval empty space interval
+                empty_blocks.delete(interval.low, interval.high);
+
+                // Add remaining free space after the file is moved
+                let remaining_free_space = interval.size().abs_diff(file_block.size());
+                if remaining_free_space > 0 {
+                    empty_blocks.insert(interval.low + file_block.size(), interval.high);
+                }
+
+                // Update file block
+                let mut new_file_block = file_block.clone();
+                new_file_block.start = interval.low;
+                new_file_block.end = interval.low + file_block.size() - 1;
+                file_block = new_file_block;
+                break;
+            }
+        }
+        defragged_disk.push(file_block);
+    }
+    defragged_disk.iter().map(|f| f.check_sum()).sum()
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
@@ -207,7 +243,12 @@ mod tests {
     #[test]
     fn test_part1() {
         let input = parse_input("2333133121414131402").unwrap();
-
         assert_eq!(part1(&input), 1928);
+    }
+
+    #[test]
+    fn test_part2() {
+        let input = parse_input("2333133121414131402").unwrap();
+        assert_eq!(part2(&input), 2858);
     }
 }

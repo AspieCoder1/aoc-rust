@@ -94,6 +94,7 @@ dependencies = [
  "itertools 0.14.0",
  "nalgebra",
  "num",
+ "num-traits",
  "paste",
  "pretty_assertions",
  "rayon",

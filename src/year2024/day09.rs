@@ -115,7 +115,7 @@ fn part2(input: &[FileBlock]) -> usize {
         if block.file_id == -1 {
             empty_blocks.insert(block.start, block.end);
         } else {
-            file_blocks.push(block.clone());
+            file_blocks.push(*block);
         }
     }
 
@@ -133,7 +133,7 @@ fn part2(input: &[FileBlock]) -> usize {
                 }
 
                 // Update file block
-                let mut new_file_block = file_block.clone();
+                let mut new_file_block = file_block;
                 new_file_block.start = interval.low;
                 new_file_block.end = interval.low + file_block.size() - 1;
                 file_block = new_file_block;

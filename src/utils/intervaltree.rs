@@ -49,6 +49,12 @@ pub struct IntervalTree<T> {
     root: Option<Box<Node<T>>>,
 }
 
+impl<T: Ord + Copy + Bounded> Default for IntervalTree<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Ord + Copy + Bounded> IntervalTree<T> {
     /// Create a new empty interval tree
     pub fn new() -> Self {
@@ -83,10 +89,11 @@ impl<T: Ord + Copy + Bounded> IntervalTree<T> {
     }
 
     fn delete_rec(node: Option<Box<Node<T>>>, low: T, high: T) -> Option<Box<Node<T>>> {
-        let mut n = match node {
-            None => return None,
-            Some(n) => n,
-        };
+        // let mut n = match node {
+        //     None => return None,
+        //     Some(n) => n,
+        // };
+        let mut n = node?;
 
         if low < n.interval.low {
             n.left = Self::delete_rec(n.left.take(), low, high);

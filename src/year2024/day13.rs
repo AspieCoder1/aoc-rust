@@ -145,4 +145,10 @@ Prize: X=18641, Y=10279";
         let input = parse_input(EXAMPLE).unwrap();
         assert_eq!(part1(&input), 480);
     }
+
+    #[test]
+    fn test_part2() {
+        let input = parse_input(EXAMPLE).unwrap();
+        assert_eq!(part2(&input), 875318608908);
+    }
 }

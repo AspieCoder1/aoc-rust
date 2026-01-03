@@ -72,7 +72,7 @@ fn apply_rules(num: usize) -> ([usize; 2], usize) {
 
     // Num digits is ⌊log₁₀(num)⌋ + 1
     let num_digits = usize::ilog10(num) + 1;
-    if num_digits % 2 == 0 {
+    if num_digits.is_multiple_of(2) {
         let k = num_digits / 2;
         return ([num / 10_usize.pow(k), num % 10_usize.pow(k)], 2);
     }
@@ -97,8 +97,8 @@ mod tests {
     }
 
     #[test]
-    fn test_part1() {
+    fn test_get_num_stones() {
         let input = parse_input(EXAMPLE);
-        assert_eq!(part1(&input), 55312);
+        assert_eq!(get_num_stones(&input, 25), 55312);
     }
 }

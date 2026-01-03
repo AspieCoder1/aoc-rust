@@ -389,6 +389,40 @@ impl LinearProgrammingProblem {
     }
 }
 
+pub(crate) fn branch_and_bound(root: LPBuilder, n: usize) -> Option<i64> {
+    let mut best: Option<i64> = None;
+    let mut stack = vec![root];
+    while let Some(b) = stack.pop() {
+        let mut lp = b.clone().build();
+        let Some(obj) = lp.minimize() else {
+            continue; // infeasible/unbounded node
+        };
+        let node_lb = obj.ceil();
+        if let Some(best_val) = best
+            && node_lb >= best_val.into()
+        {
+            continue;
+        }
+        let x = lp.solution_x();
+        if let Some((k, xk)) = x.iter().enumerate().find(|(_, v)| !v.is_integer()) {
+            let lo = xk.floor().to_integer();
+            let hi = xk.ceil().to_integer();
+            let mut b_le = b.clone();
+            let mut v = vec![0; n];
+            v[k] = 1;
+            b_le.add_constraint(v.clone(), LPOps::Lte, lo);
+            let mut b_ge = b;
+            b_ge.add_constraint(v, LPOps::Gte, hi);
+            stack.push(b_le);
+            stack.push(b_ge);
+        } else {
+            let obj_i = obj.to_integer();
+            best = Some(best.map_or(obj_i, |cur| cur.min(obj_i)));
+        }
+    }
+    best
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

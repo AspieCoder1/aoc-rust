@@ -1,11 +1,12 @@
 //! Advent of Code 2025 Day 10
 //! Link: <https://adventofcode.com/2025/day/10>
 //!
-use crate::utils::simplex::{LPBuilder, LPOps};
-use anyhow::{Error, Result};
-use regex::RegexBuilder;
+use crate::utils::simplex::{LPBuilder, LPOps, branch_and_bound};
+use anyhow::{Context, Error, Result};
+use regex::Regex;
 use std::collections::{HashSet, VecDeque};
 use std::str::FromStr;
+use std::sync::OnceLock;
 
 pub fn main(data: &str) -> Result<(usize, usize)> {
     let input = parse_input(data)?;
@@ -45,40 +46,6 @@ fn part1(input: &[Input]) -> usize {
     acc
 }
 
-fn branch_and_bound(root: LPBuilder, n: usize) -> Option<i64> {
-    let mut best: Option<i64> = None;
-    let mut stack = vec![root];
-    while let Some(b) = stack.pop() {
-        let mut lp = b.clone().build();
-        let Some(obj) = lp.minimize() else {
-            continue; // infeasible/unbounded node
-        };
-        let node_lb = obj.ceil();
-        if let Some(best_val) = best
-            && node_lb >= best_val.into()
-        {
-            continue;
-        }
-        let x = lp.solution_x();
-        if let Some((k, xk)) = x.iter().enumerate().find(|(_, v)| !v.is_integer()) {
-            let lo = xk.floor().to_integer();
-            let hi = xk.ceil().to_integer();
-            let mut b_le = b.clone();
-            let mut v = vec![0; n];
-            v[k] = 1;
-            b_le.add_constraint(v.clone(), LPOps::Lte, lo);
-            let mut b_ge = b;
-            b_ge.add_constraint(v, LPOps::Gte, hi);
-            stack.push(b_le);
-            stack.push(b_ge);
-        } else {
-            let obj_i = obj.to_integer();
-            best = Some(best.map_or(obj_i, |cur| cur.min(obj_i)));
-        }
-    }
-    best
-}
-
 // We can recast each problem as ILP and then use the revised simplex algorithm to solve it.
 fn part2(_input: &[Input]) -> usize {
     let mut acc = 0;
@@ -102,61 +69,80 @@ struct Input {
     lpbuilder: LPBuilder,
 }
 
+static RE_PATTERN: OnceLock<Regex> = OnceLock::new();
+static RE_WIRING: OnceLock<Regex> = OnceLock::new();
+static RE_JOLTAGE: OnceLock<Regex> = OnceLock::new();
+
 impl FromStr for Input {
     type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Regex to parse each part of the input
-        let pattern_regex = RegexBuilder::new(r"\[([#\.]+)\]").build()?;
-        let wiring_regex = RegexBuilder::new(r"\(([\d\,?]+)\)").build()?;
-        let joltage_regex = RegexBuilder::new(r"\{([\d|\,]+)\}").build()?;
 
-        // Processing the capture group
-        let pattern_str = &pattern_regex.captures(s).unwrap()[1];
-        let wiring_str = &wiring_regex.captures_iter(s).collect::<Vec<_>>();
-        let joltage_str = &joltage_regex.captures(s).unwrap()[1];
+    fn from_str(s: &str) -> Result<Self> {
+        // Initialize Regexes
+        let re_p = RE_PATTERN.get_or_init(|| Regex::new(r"\[([#.]+)\]").unwrap());
+        let re_w = RE_WIRING.get_or_init(|| Regex::new(r"\(([\d,?]+)\)").unwrap());
+        let re_j = RE_JOLTAGE.get_or_init(|| Regex::new(r"\{([\d|,]+)\}").unwrap());
 
-        // Converting the final values
-        let pattern = pattern_str
+        // Extract raw strings with context-rich errors
+        let pattern_raw = &re_p.captures(s).context("Failed to find pattern [#...]")?[1];
+        let joltage_raw = &re_j.captures(s).context("Failed to find joltage {...}")?[1];
+        let wiring_caps: Vec<_> = re_w.captures_iter(s).collect();
+
+        let p_len = pattern_raw.len();
+        let to_mask = |i: usize| 1 << (p_len - 1 - i);
+
+        // 1. Parse Pattern bitmask
+        let pattern = pattern_raw
             .chars()
             .enumerate()
             .filter(|&(_, c)| c == '#')
-            .map(|(i, _)| 1 << (pattern_str.len() - 1 - i))
-            .sum::<usize>();
-        let wiring = wiring_str
-            .iter()
-            .map(|row| {
-                row[1]
-                    .split(',')
-                    .map(|s| s.parse::<usize>().unwrap())
-                    .map(|u| 1 << (pattern_str.len() - 1 - u))
-                    .sum::<usize>()
-            })
-            .collect::<Vec<_>>();
-        let joltage_required = joltage_str
-            .split(',')
-            .map(|s| s.parse::<usize>().unwrap())
-            .collect::<Vec<_>>();
+            .map(|(i, _)| to_mask(i))
+            .sum();
 
-        let num_buttons = wiring_str.len();
-        let mut lp_builder = LPBuilder::new();
+        // 2. Parse Joltage requirements
+        let joltage_required = joltage_raw
+            .split(',')
+            .map(|val| {
+                val.parse::<usize>()
+                    .with_context(|| format!("Invalid joltage: {val}"))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        // 3. Parse Wiring and build Constraints simultaneously
+        let num_buttons = wiring_caps.len();
         let num_machines = joltage_required.len();
         let mut constraints = vec![vec![0; num_buttons]; num_machines];
 
-        for (button, wiring) in wiring_str.iter().enumerate() {
-            for machine in wiring[1].split(',').map(|s| s.parse::<usize>().unwrap()) {
-                constraints[machine][button] = 1;
-            }
+        let wiring = wiring_caps
+            .iter()
+            .enumerate()
+            .map(|(btn_idx, cap)| {
+                let mut mask_sum = 0;
+                for part in cap[1].split(',') {
+                    let m_idx: usize = part
+                        .parse()
+                        .with_context(|| format!("Invalid wiring index: {part}"))?;
+
+                    mask_sum += to_mask(m_idx);
+                    if m_idx < num_machines {
+                        constraints[m_idx][btn_idx] = 1;
+                    }
+                }
+                Ok(mask_sum)
+            })
+            .collect::<Result<Vec<usize>>>()?;
+
+        // 4. Build LP
+        let mut lpbuilder = LPBuilder::new();
+        for (i, constraint) in constraints.into_iter().enumerate() {
+            lpbuilder.add_constraint(constraint, LPOps::Eq, joltage_required[i] as i64);
         }
-        for (ind, constraint) in constraints.iter().enumerate() {
-            lp_builder.add_constraint(constraint.clone(), LPOps::Eq, joltage_required[ind] as i64);
-        }
-        lp_builder.add_objective(vec![1; num_buttons]);
+        lpbuilder.add_objective(vec![1; num_buttons]);
 
         Ok(Self {
             pattern,
             wiring,
             joltage_required,
-            lpbuilder: lp_builder,
+            lpbuilder,
         })
     }
 }

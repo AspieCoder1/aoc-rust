@@ -2,11 +2,13 @@
 //!
 //! Implementation of a disjoint set data structure using union by size.
 
+use std::collections::HashMap;
+
 #[allow(unused)]
 #[derive(Debug)]
 pub(crate) struct Node<T> {
-    data: T,
-    parent: usize,
+    pub(crate) data: T,
+    pub(crate) parent: usize,
     pub(crate) size: usize,
 }
 
@@ -71,6 +73,25 @@ impl<T> DisjointSet<T> {
             self.nodes[x].size += self.nodes[y].size;
         }
         self.nodes[x].size
+    }
+}
+
+impl<T: Clone> DisjointSet<T> {
+    #[allow(unused)]
+    pub(crate) fn get_all_sets(&mut self) -> HashMap<usize, Vec<T>> {
+        let mut sets = HashMap::new();
+
+        for i in 0..self.nodes.len() {
+            // Find the root of the current node
+            let root = self.find(i);
+
+            // Get the data (requires Clone) and push to the corresponding group
+            sets.entry(root)
+                .or_insert_with(Vec::new)
+                .push(self.nodes[i].data.clone());
+        }
+
+        sets
     }
 }
 

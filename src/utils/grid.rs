@@ -628,6 +628,13 @@ impl<T> Grid<T> {
                     || boundary_function(&self[(pos.0 + 1, pos.1)]))
         }
     }
+
+    /// Swaps the elements at two different positions.
+    pub fn swap(&mut self, a: Pos, b: Pos) {
+        let idx_a = a.0 * self.width + a.1;
+        let idx_b = b.0 * self.width + b.1;
+        self.g.swap(idx_a, idx_b);
+    }
 }
 
 impl<T> Grid<T>

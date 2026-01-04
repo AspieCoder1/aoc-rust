@@ -4,137 +4,101 @@
 
 use crate::utils::point::Point;
 use anyhow::{Context, Result};
-use itertools::*;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::OnceLock;
 
 pub fn main(input: &str) -> Result<(usize, usize)> {
-    let input = parse_input(input)?;
-    Ok((part1(&input, (101, 103)), part2(&input)))
+    let robots = parse_input(input)?;
+
+    Ok((part1(&robots, (101, 103)), part2(&robots, (101, 103))))
 }
 
 fn parse_input(input: &str) -> Result<Vec<Robot>> {
     input.lines().map(Robot::from_str).collect()
 }
 
-fn part1(input: &[Robot], grid_size: (i32, i32)) -> usize {
-    let mut num_per_quadrant = HashMap::new();
-    input.iter().for_each(|robot| {
-        let new_pos = robot.move_robot(100, grid_size.1, grid_size.0);
-        let quadrant = map_coord_to_quadrant(new_pos, grid_size.0, grid_size.1);
-        if quadrant > 0 {
-            *num_per_quadrant.entry(quadrant).or_insert(0) += 1;
-        }
-    });
-    num_per_quadrant.values().product()
-}
+fn part1(robots: &[Robot], grid_size: (i32, i32)) -> usize {
+    let (w, h) = grid_size;
+    let mid_x = w / 2;
+    let mid_y = h / 2;
+    let mut quads = [0usize; 4];
 
-fn part2(input: &[Robot]) -> usize {
-    let mut robots = input.to_vec();
-    let mut robot_map = [[0; 101]; 103];
-    let mut time = 1;
+    for r in robots {
+        let p = r.at_time(100, w, h);
 
-    loop {
-        for robot in robots.iter_mut() {
-            robot.move_robot_mut(1, 103, 101);
-        }
-        project_robots_to_map(&robots, &mut robot_map);
-        if find_straight_line_of_ten(&robot_map) {
-            break;
-        }
-        time += 1;
-    }
-    time
-}
-
-fn reset_map(map: &mut [[i32; 101]; 103]) {
-    for row in map.iter_mut() {
-        for cell in row.iter_mut() {
-            *cell = 0;
+        // Use Ordering to determine which quadrant the robot falls into
+        match (p.x.cmp(&mid_x), p.y.cmp(&mid_y)) {
+            (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => quads[0] += 1,
+            (std::cmp::Ordering::Greater, std::cmp::Ordering::Less) => quads[1] += 1,
+            (std::cmp::Ordering::Less, std::cmp::Ordering::Greater) => quads[2] += 1,
+            (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => quads[3] += 1,
+            _ => {} // Robots on the exact middle lines are ignored
         }
     }
+    quads.iter().product()
 }
 
-fn project_robots_to_map(locations: &[Robot], map: &mut [[i32; 101]; 103]) {
-    reset_map(map);
-    for robot in locations {
-        map[robot.start.y as usize][robot.start.x as usize] += 1;
+fn part2(robots: &[Robot], grid_size: (i32, i32)) -> usize {
+    let (w, h) = grid_size;
+    // Part 2's Christmas tree logic is specific to the 101x103 challenge.
+    if w < 20 {
+        return 0;
     }
-}
 
-fn find_straight_line_of_ten(map: &[[i32; 101]; 103]) -> bool {
-    // Check horizontal lines
-    let found_horizontal_line = map.iter().any(|row| {
-        row.windows(10)
-            .any(|window| window.iter().all(|cell| *cell > 0))
-    });
+    let mut current_robots = robots.to_vec();
+    for t in 1..10_000 {
+        let mut seen = HashSet::with_capacity(robots.len());
+        let mut overlap = false;
 
-    // Check vertical lines
-    let found_vertical_line = (0..101).any(|x| {
-        (0..103)
-            .map(|y| map[y][x] > 0)
-            .chunk_by(|&is_positive| is_positive)
-            .into_iter()
-            .any(|(is_positive, group)| is_positive && group.count() >= 10)
-    });
-    found_horizontal_line || found_vertical_line
-}
+        for r in current_robots.iter_mut() {
+            r.step(w, h);
+            // If two robots occupy the same space, the "tree" isn't formed yet
+            if !seen.insert((r.pos.x, r.pos.y)) {
+                overlap = true;
+            }
+        }
 
-fn map_coord_to_quadrant(point: Point, tile_width: i32, tile_height: i32) -> usize {
-    let middle_width = tile_width / 2;
-    let middle_heigh = tile_height / 2;
-
-    if point.x < middle_width && point.y < middle_heigh {
-        1
-    } else if point.x > middle_width && point.y < middle_heigh {
-        2
-    } else if point.x < middle_width && point.y > middle_heigh {
-        3
-    } else if point.x > middle_width && point.y > middle_heigh {
-        4
-    } else {
-        0
+        if !overlap {
+            return t;
+        }
     }
+    0
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 struct Robot {
-    start: Point,
-    velocity: Point,
+    pos: Point,
+    vel: Point,
 }
 
 impl Robot {
-    fn move_robot(&self, steps: i32, tile_tall: i32, tile_wide: i32) -> Point {
-        let new_x = (self.start.x + (self.velocity.x * steps)).rem_euclid(tile_wide);
-        let new_y = (self.start.y + (self.velocity.y * steps)).rem_euclid(tile_tall);
-        Point::new(new_x, new_y)
+    fn at_time(&self, t: i32, w: i32, h: i32) -> Point {
+        Point::new(
+            (self.pos.x + self.vel.x * t).rem_euclid(w),
+            (self.pos.y + self.vel.y * t).rem_euclid(h),
+        )
     }
 
-    fn move_robot_mut(&mut self, steps: i32, tile_tall: i32, tile_wide: i32) {
-        self.start.x = (self.start.x + (self.velocity.x * steps)).rem_euclid(tile_wide);
-        self.start.y = (self.start.y + (self.velocity.y * steps)).rem_euclid(tile_tall);
+    fn step(&mut self, w: i32, h: i32) {
+        self.pos.x = (self.pos.x + self.vel.x).rem_euclid(w);
+        self.pos.y = (self.pos.y + self.vel.y).rem_euclid(h);
     }
 }
-
-static ROBOT_REGEX: OnceLock<Regex> = OnceLock::new();
 
 impl FromStr for Robot {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self> {
-        let integer_regex =
-            ROBOT_REGEX.get_or_init(|| Regex::new(r"p=(-?\d+),(-?\d+) v=(-?\d+),(-?\d+)").unwrap());
-        let capture = integer_regex.captures(s).context("Invalid robot format")?;
-
-        let pos_x = capture.get(1).unwrap().as_str().parse::<i32>()?;
-        let pos_y = capture.get(2).unwrap().as_str().parse::<i32>()?;
-        let vel_x = capture.get(3).unwrap().as_str().parse::<i32>()?;
-        let vel_y = capture.get(4).unwrap().as_str().parse::<i32>()?;
+        static RE: OnceLock<Regex> = OnceLock::new();
+        let caps = RE
+            .get_or_init(|| Regex::new(r"p=(-?\d+),(-?\d+) v=(-?\d+),(-?\d+)").unwrap())
+            .captures(s)
+            .context("Parse error")?;
 
         Ok(Self {
-            start: Point::new(pos_x, pos_y),
-            velocity: Point::new(vel_x, vel_y),
+            pos: Point::new(caps[1].parse()?, caps[2].parse()?),
+            vel: Point::new(caps[3].parse()?, caps[4].parse()?),
         })
     }
 }

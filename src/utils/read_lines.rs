@@ -1,11 +1,13 @@
-use std::fs::File;
-use std::io::{self, BufRead};
-use std::path::Path;
+pub fn as_lines(input: &str) -> Vec<&str> {
+    input.lines().collect()
+}
 
-pub fn read_lines<T>(filename: T) -> io::Result<io::Lines<io::BufReader<File>>>
+pub fn parse_lines<T>(input: &str) -> Vec<T>
 where
-    T: AsRef<Path>,
+    T: std::str::FromStr,
+    <T as std::str::FromStr>::Err: std::fmt::Debug
 {
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
+    input.lines()
+        .map(|line| line.parse::<T>().unwrap())
+        .collect()
 }

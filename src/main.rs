@@ -1,24 +1,17 @@
 use clap::Parser;
 use colored::Colorize;
-use std::fs::read_to_string;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-struct Solution {
-    year: u32,
-    day: u32,
-    wrapper: fn(String) -> (String, String),
-}
+use aoc::{year2024, year2025, Solution};
 
-/// CLI to run Advent of Code solutions
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about = "🎄 Advent of Code Dashboard")]
 struct Args {
-    /// Year to run
     #[arg(short, long)]
     year: Option<u32>,
-
-    /// Day to run
     #[arg(short, long)]
     day: Option<u32>,
 }
@@ -26,55 +19,104 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let year = args.year;
-    let day = args.day;
+    // 1. Pretty Header
+    println!("\n{}", " ❄  ADVENT OF CODE RUNNER  ❄ ".bold().white().on_blue());
+    println!("{}", "=".repeat(32).blue());
 
-    let solutions = [year2024(), year2025()];
-
-    let (star, duration) = solutions
-        .iter()
+    let all_solutions: Vec<Solution> = [
+        year2024::get_solutions(),
+        year2025::get_solutions(),
+    ]
+        .into_iter()
         .flatten()
-        .filter(|s| year.is_none_or(|y| y == s.year))
-        .filter(|s| day.is_none_or(|d| d == s.day))
-        .fold((0, Duration::ZERO), run_solution);
+        .filter(|s| args.year.map_or(true, |y| y == s.year))
+        .filter(|s| args.day.map_or(true, |d| d == s.day))
+        .collect();
 
-    println!("⭐ {}", star);
-    println!("🕓 {} ms", duration.as_millis());
-}
+    if all_solutions.is_empty() {
+        println!("{}", "  No solutions matched your filters.".dimmed());
+        return;
+    }
 
-fn run_solution((stars, duration): (u32, Duration), solution: &Solution) -> (u32, Duration) {
-    let Solution { year, day, wrapper } = solution;
-    let data = read_to_string(Path::new(&format!("input/year{}/day{:02}.txt", year, day))).unwrap();
-    let instant = Instant::now();
-    let (part1, part2) = wrapper(data);
-    let elapsed = instant.elapsed();
+    let multi = MultiProgress::new();
+    let pb = multi.add(ProgressBar::new(all_solutions.len() as u64));
 
-    println!("{}", format!("{year} Day {day}").green().bold());
-    println!("    Part 1: {part1}");
-    println!("    Part 2: {part2}");
+    // 2. Prettier Bar Style
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{spinner:.magenta} {elapsed_precise} [{bar:30.white/blue}] {pos}/{len} {msg}",
+        )
+            .unwrap()
+            .progress_chars("❄- "), // Using a snowflake as the progress char
+    );
 
-    (stars + 2, duration + elapsed)
-}
+    let mut total_stars = 0;
+    let mut total_duration = Duration::ZERO;
+    let mut current_year = 0;
 
-macro_rules! run {
-    ($year:tt $($day:tt),*) => {
-        fn $year() -> Vec<Solution> {
-            vec![$(
-                Solution {
-                    year: stringify!($year).strip_prefix("year").expect("Invalid year").parse().unwrap(),
-                    day: stringify!($day).strip_prefix("day").expect("Invalid day").parse().unwrap(),
-                    wrapper: |data: String| {
-                        if let Ok((part1, part2)) = aoc::$year::$day::main(data.as_str()) {
-                            return (part1.to_string(), part2.to_string())
-                        } else {
-                            return (String::from("???"), String::from("???"))
-                        }
-                    }
-                }
-            ,)*]
+    for solution in all_solutions {
+        // Grouping by Year
+        if solution.year != current_year {
+            current_year = solution.year;
+            pb.println(format!("\n📅 {}", current_year.to_string().bold().underline().blue()));
         }
+
+        pb.set_message(format!("Day {:02}", solution.day));
+
+        let (stars, duration) = run_solution(&solution, &pb);
+
+        total_stars += stars;
+        total_duration += duration;
+        pb.inc(1);
+    }
+
+    pb.finish_and_clear();
+
+    // 3. Final Summary Table-style
+    println!("\n{}", "📊 FINAL STATS".bold().magenta());
+    println!("{}", "─".repeat(20).magenta());
+    println!("⭐ Stars:    {}", total_stars.to_string().yellow().bold());
+    println!("🕓 Time:     {}", format_duration(total_duration));
+    println!("{}\n", "─".repeat(20).magenta());
+}
+
+fn run_solution(sol: &Solution, pb: &ProgressBar) -> (u32, Duration) {
+    let path_str = format!("input/year{}/day{:02}.txt", sol.year, sol.day);
+    let Ok(data) = fs::read_to_string(Path::new(&path_str)) else {
+        pb.println(format!("  {} Day {:02}: {}", "⚠".red(), sol.day, "Input missing".dimmed()));
+        return (0, Duration::ZERO);
+    };
+
+    let start = Instant::now();
+    let (p1, p2) = (sol.wrapper)(&data);
+    let elapsed = start.elapsed();
+
+    // 4. Color-coded timing (Heatmap style)
+    let time_color = if elapsed.as_millis() < 100 {
+        elapsed.as_millis().to_string().green()
+    } else if elapsed.as_millis() < 1000 {
+        elapsed.as_millis().to_string().yellow()
+    } else {
+        elapsed.as_millis().to_string().red()
+    };
+
+    pb.println(format!(
+        "  {} Day {:02} {} {} ms\n    {} {}\n    {} {}",
+        "✨".blue(),
+        sol.day,
+        "─".dimmed(),
+        time_color,
+        "▪ Part 1:".dimmed(), p1.white().bold(),
+        "▪ Part 2:".dimmed(), p2.white().bold(),
+    ));
+
+    (2, elapsed)
+}
+
+fn format_duration(d: Duration) -> String {
+    if d.as_secs() > 0 {
+        format!("{:.2}s", d.as_secs_f32()).red().bold().to_string()
+    } else {
+        format!("{}ms", d.as_millis()).cyan().bold().to_string()
     }
 }
-
-run!(year2025 day01, day02, day03, day04, day05, day06, day07, day08, day09, day10, day11, day12);
-run!(year2024 day01, day02, day03, day04, day05, day06, day07, day08, day09, day10, day11, day12, day13, day14, day15, day16);

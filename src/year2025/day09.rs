@@ -1,6 +1,7 @@
 //! Advent of Code 2025 Day 9
-//! Link: <https://adventofcode.com/2025/day/9>
 //!
+//! Final Source with robust Ray-Casting Fill and 2D Prefix Sums.
+
 use crate::utils::grid::{Grid, Pos};
 use anyhow::Result;
 use itertools::Itertools;
@@ -8,7 +9,6 @@ use std::collections::HashMap;
 
 pub fn main(data: &str) -> Result<(usize, usize)> {
     let input = parse_input(data)?;
-
     Ok((part1(&input), part2(&input)))
 }
 
@@ -17,11 +17,15 @@ type Tile = (usize, usize);
 pub fn parse_input(input: &str) -> Result<Vec<Tile>> {
     Ok(input
         .lines()
+        .filter(|l| !l.trim().is_empty())
         .map(|line| {
-            let (x, y) = line.split_once(',').unwrap();
-            (x.parse::<usize>().unwrap(), y.parse::<usize>().unwrap())
+            let (x, y) = line.split_once(',').expect("Invalid format: x,y");
+            (
+                x.trim().parse::<usize>().expect("X parse error"),
+                y.trim().parse::<usize>().expect("Y parse error"),
+            )
         })
-        .collect::<Vec<_>>())
+        .collect())
 }
 
 pub fn part1(input: &[Tile]) -> usize {
@@ -37,128 +41,116 @@ pub fn part1(input: &[Tile]) -> usize {
 }
 
 struct Compressed {
+    coords: Vec<usize>,
     map: HashMap<usize, usize>,
-    sizes: Vec<usize>,
 }
 
 impl Compressed {
     fn new(points: &[usize]) -> Self {
-        // double up each point so there is an entry for every gap
-        let doubled = points
-            .iter()
-            .flat_map(|&point| [point, point + 1])
-            .collect::<Vec<_>>();
-        let map: HashMap<_, _> = doubled
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(i, pt)| (pt, i))
-            .collect();
-        let sizes: Vec<_> = doubled
-            .iter()
-            .copied()
-            .tuple_windows()
-            .map(|(a, b)| b - a)
-            .collect();
-        Self { map, sizes }
+        let mut coords = Vec::new();
+        for &p in points {
+            if p > 0 { coords.push(p - 1); }
+            coords.push(p);
+            coords.push(p + 1);
+        }
+        coords.sort_unstable();
+        coords.dedup();
+
+        let map = coords.iter().enumerate().map(|(i, &p)| (p, i)).collect();
+        Self { coords, map }
     }
 
     fn get(&self, point: usize) -> usize {
-        self.map[&point]
-    }
-
-    fn len(&self) -> usize {
-        self.sizes.len()
+        *self.map.get(&point).expect("Coord missing")
     }
 }
 
 pub fn part2(input: &[Tile]) -> usize {
-    let points = input.to_vec();
+    if input.len() < 3 { return 0; }
 
-    let x_coords = points
-        .iter()
-        .map(|&(x, _)| x)
-        .sorted()
-        .dedup()
-        .collect::<Vec<_>>();
-    let y_coords = points
-        .iter()
-        .map(|&(_, y)| y)
-        .sorted()
-        .dedup()
-        .collect::<Vec<_>>();
+    let x_coords = input.iter().map(|p| p.0).collect::<Vec<_>>();
+    let y_coords = input.iter().map(|p| p.1).collect::<Vec<_>>();
 
     let xcomp = Compressed::new(&x_coords);
     let ycomp = Compressed::new(&y_coords);
 
-    let mut g = Grid::<bool>::new(false, xcomp.len(), ycomp.len());
-    // draw the contour in compressed coordinates.
-    for ((x1, y1), (x2, y2)) in points
-        .iter()
-        .chain(std::iter::once(&points[0]))
-        .map(|&(x, y)| (xcomp.get(x), ycomp.get(y)))
-        .tuple_windows()
-    {
-        if x1 == x2 {
-            for i in y1.min(y2)..=y1.max(y2) {
-                g[(i, x1)] = true;
-            }
-        } else {
-            for j in x1.min(x2)..=x1.max(x2) {
-                g[(y1, j)] = true;
+    let mut g = Grid::<bool>::new(false, xcomp.coords.len(), ycomp.coords.len());
+
+    // 1. Draw boundary lines
+    for (&(ax, ay), &(bx, by)) in input.iter().chain(std::iter::once(&input[0])).tuple_windows() {
+        let (cx1, cy1) = (xcomp.get(ax), ycomp.get(ay));
+        let (cx2, cy2) = (xcomp.get(bx), ycomp.get(by));
+
+        for i in cy1.min(cy2)..=cy1.max(cy2) {
+            for j in cx1.min(cx2)..=cx1.max(cx2) {
+                g[Pos(i, j)] = true;
             }
         }
     }
-    let (x0, y0) = points[0];
-    let (cx0, cy0) = (xcomp.get(x0), ycomp.get(y0));
 
-    let fill_start = g
-        .all_neighbors(Pos(cy0, cx0))
-        .find(|&pos| g.is_inside_polygon(pos, |b| *b))
-        .unwrap();
+    // 2. Interior Detection & Fill (Borrow-safe)
+    let fill_start = {
+        let mut found = None;
+        // Search for a point that is NOT a boundary but IS inside the polygon
+        'search: for r in 0..g.height {
+            for c in 0..g.width {
+                let p = Pos(r, c);
+                if !g[p] && g.is_inside_polygon(p, |&b| b) {
+                    found = Some(p);
+                    break 'search;
+                }
+            }
+        }
+        found
+    };
 
-    g.flood_fill(fill_start, true, |b| *b);
+    if let Some(pos) = fill_start {
+        g.flood_fill(pos, true, |&b| b);
+    }
 
+    // 3. Functional 2D Prefix Sum
     let mut psum = Grid::<usize>::new(0, g.width, g.height);
-    psum[(0, 0)] = g[(0, 0)] as usize;
-    for i in 1..psum.height {
-        psum[(i, 0)] = psum[(i - 1, 0)] + g[(i, 0)] as usize;
+    for i in 0..g.height {
+        let mut row_acc = 0;
+        for j in 0..g.width {
+            row_acc += g[Pos(i, j)] as usize;
+            psum[Pos(i, j)] = row_acc;
+        }
     }
-    for j in 1..psum.width {
-        psum[(0, j)] = psum[(0, j - 1)] + g[(0, j)] as usize;
-    }
-    for i in 1..psum.height {
-        for j in 1..psum.width {
-            psum[(i, j)] =
-                psum[(i - 1, j)] + psum[(i, j - 1)] - psum[(i - 1, j - 1)] + g[(i, j)] as usize;
+    for j in 0..g.width {
+        let mut col_acc = 0;
+        for i in 0..g.height {
+            col_acc += psum[Pos(i, j)];
+            psum[Pos(i, j)] = col_acc;
         }
     }
 
-    points
-        .iter()
-        .tuple_combinations()
-        .filter_map(|(&(x1, y1), &(x2, y2))| {
-            let (i1, j1) = (ycomp.get(y1.min(y2)), xcomp.get(x1.min(x2)));
-            let (i2, j2) = (ycomp.get(y1.max(y2)), xcomp.get(x1.max(x2)));
-            let expected = (i2 - i1 + 1) * (j2 - j1 + 1);
-            let mut actual = psum[(i2, j2)];
-            if i1 > 0 && j1 > 0 {
-                actual += psum[(i1 - 1, j1 - 1)];
+    // 4. Find max area rectangle
+    let mut max_area = 0;
+    for i in 0..input.len() {
+        for j in i + 1..input.len() {
+            let (p1, p2) = (input[i], input[j]);
+            let (x_min, x_max) = (p1.0.min(p2.0), p1.0.max(p2.0));
+            let (y_min, y_max) = (p1.1.min(p2.1), p1.1.max(p2.1));
+
+            let (cx1, cx2) = (xcomp.get(x_min), xcomp.get(x_max));
+            let (cy1, cy2) = (ycomp.get(y_min), ycomp.get(y_max));
+
+            let corner = psum[Pos(cy2, cx2)];
+            let up = if cy1 > 0 { psum[Pos(cy1 - 1, cx2)] } else { 0 };
+            let left = if cx1 > 0 { psum[Pos(cy2, cx1 - 1)] } else { 0 };
+            let diag = if cy1 > 0 && cx1 > 0 { psum[Pos(cy1 - 1, cx1 - 1)] } else { 0 };
+
+            let filled_cells = (corner + diag).saturating_sub(up + left);
+            let expected_cells = (cy2 - cy1 + 1) * (cx2 - cx1 + 1);
+
+            if filled_cells == expected_cells {
+                max_area = max_area.max((x_max - x_min + 1) * (y_max - y_min + 1));
             }
-            if i1 > 0 {
-                actual -= psum[(i1 - 1, j2)];
-            }
-            if j1 > 0 {
-                actual -= psum[(i2, j1 - 1)];
-            }
-            if expected == actual {
-                Some((x1.abs_diff(x2) + 1) * (y1.abs_diff(y2) + 1))
-            } else {
-                None
-            }
-        })
-        .max()
-        .unwrap()
+        }
+    }
+
+    max_area
 }
 
 #[cfg(test)]
@@ -166,15 +158,7 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
-    const EXAMPLE: &str = "\
-7,1
-11,1
-11,7
-9,7
-9,5
-2,5
-2,3
-7,3";
+    const EXAMPLE: &str = "7,1\n11,1\n11,7\n9,7\n9,5\n2,5\n2,3\n7,3";
 
     #[test]
     fn test_part1() {

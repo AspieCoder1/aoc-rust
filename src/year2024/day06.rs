@@ -2,7 +2,7 @@
 //!
 //! Link: <https://adventofcode.com/2024/day/6>
 
-use crate::utils::grid::Grid;
+use crate::utils::grid::{Grid, Pos};
 use anyhow::Result;
 use rayon::prelude::*;
 use std::collections::HashSet;
@@ -16,87 +16,85 @@ pub fn main(input_data: &str) -> Result<(usize, usize)> {
 
 fn part1(input: &Grid<char>) -> usize {
     let start_pos = input.all_positions(|&c| c == '^').next().unwrap();
-    get_visited_location(input, (start_pos.0, start_pos.1)).len()
+    get_visited_locations(input, start_pos).len()
 }
 
-fn get_visited_location(input: &Grid<char>, start_pos: (usize, usize)) -> HashSet<(usize, usize)> {
-    let mut visited_positions = HashSet::new();
-    let mut curr_i = start_pos.0 as isize;
-    let mut curr_j = start_pos.1 as isize;
-    let mut direction: (isize, isize) = (-1, 0);
+fn get_visited_locations(input: &Grid<char>, start_pos: Pos) -> HashSet<Pos> {
+    let mut visited = HashSet::new();
+    let mut curr = start_pos;
+    let mut dir: (isize, isize) = (-1, 0); // North
 
     loop {
-        visited_positions.insert((curr_i as usize, curr_j as usize));
-        let new_i = curr_i + direction.0;
-        let new_j = curr_j + direction.1;
+        visited.insert(curr);
 
-        if new_i < 0 || new_i >= input.height as isize || new_j < 0 || new_j >= input.width as isize
-        {
-            break;
+        // Try to move forward
+        if let Some(next_pos) = curr + dir {
+            if !input.in_bounds(next_pos) {
+                break;
+            }
+            if input[next_pos] == '#' {
+                dir = rotate_right(dir);
+            } else {
+                curr = next_pos;
+            }
+        } else {
+            break; // Out of bounds (negative)
         }
-
-        if input[(new_i as usize, new_j as usize)] == '#' {
-            // Perform the right turn
-            direction = get_new_direction(direction);
-        }
-        curr_i += direction.0;
-        curr_j += direction.1;
     }
-    visited_positions
+    visited
 }
 
-fn check_does_loop(input: &Grid<char>, start_pos: (usize, usize)) -> bool {
-    let mut turns = HashSet::new();
-
-    let mut curr_i = start_pos.0 as isize;
-    let mut curr_j = start_pos.1 as isize;
-    let mut direction: (isize, isize) = (-1, 0);
+fn check_does_loop(input: &Grid<char>, start_pos: Pos) -> bool {
+    // Storing (Position, Direction) to detect cycles
+    let mut seen = HashSet::new();
+    let mut curr = start_pos;
+    let mut dir: (isize, isize) = (-1, 0);
 
     loop {
-        let new_i = curr_i + direction.0;
-        let new_j = curr_j + direction.1;
+        if !seen.insert((curr, dir)) {
+            return true; // Loop detected
+        }
 
-        if new_i < 0 || new_i >= input.height as isize || new_j < 0 || new_j >= input.width as isize
-        {
+        if let Some(next_pos) = curr + dir {
+            if !input.in_bounds(next_pos) {
+                return false;
+            }
+            if input[next_pos] == '#' {
+                dir = rotate_right(dir);
+            } else {
+                curr = next_pos;
+            }
+        } else {
             return false;
         }
-
-        if input[(new_i as usize, new_j as usize)] == '#' {
-            if turns.contains(&(curr_i, curr_j, direction)) {
-                return true;
-            } else {
-                turns.insert((curr_i, curr_j, direction));
-            }
-            // Perform the right turn
-            direction = get_new_direction(direction);
-        }
-        curr_i += direction.0;
-        curr_j += direction.1;
     }
 }
 
-fn get_new_direction(curr_direction: (isize, isize)) -> (isize, isize) {
+fn rotate_right(curr_direction: (isize, isize)) -> (isize, isize) {
     match curr_direction {
-        (-1, 0) => (0, 1),
-        (0, 1) => (1, 0),
-        (1, 0) => (0, -1),
-        (0, -1) => (-1, 0),
-        _ => panic!("Invalid direction"),
+        (-1, 0) => (0, 1),  // N -> E
+        (0, 1) => (1, 0),   // E -> S
+        (1, 0) => (0, -1),  // S -> W
+        (0, -1) => (-1, 0), // W -> N
+        _ => unreachable!(),
     }
 }
 
 fn part2(input: &Grid<char>) -> usize {
     let start_pos = input.all_positions(|&c| c == '^').next().unwrap();
-    let possible_obstruction_locations = input.all_positions(|&c| c == '.');
 
-    possible_obstruction_locations
-        .par_bridge()
-        .map(|pos| {
+    // Optimization: Only test positions on the original path
+    let original_path = get_visited_locations(input, start_pos);
+
+    original_path
+        .into_par_iter()
+        .filter(|&pos| pos != start_pos)
+        .filter(|&pos| {
             let mut new_grid = input.clone();
-            new_grid[(pos.0, pos.1)] = '#';
-            check_does_loop(&new_grid, (start_pos.0, start_pos.1)) as usize
+            new_grid[pos] = '#';
+            check_does_loop(&new_grid, start_pos)
         })
-        .sum::<usize>()
+        .count()
 }
 
 #[cfg(test)]

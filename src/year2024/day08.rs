@@ -15,29 +15,26 @@ pub fn main(input_data: &str) -> Result<(usize, usize)> {
 }
 
 fn part1(grid: &Grid<char>) -> usize {
-    let antenna_positions: HashMap<char, Vec<(isize, isize)>> = get_antenna_positions(grid);
-    let mut antinodes: HashSet<(isize, isize)> = HashSet::new();
+    let antenna_positions = get_antenna_positions(grid);
+    let mut antinodes: HashSet<Pos> = HashSet::new();
 
     for (_, positions) in antenna_positions.iter() {
-        for (a, b) in positions.iter().tuple_combinations() {
-            let (di, dj) = (a.0 - b.0, a.1 - b.1);
-            let antinode_a = (a.0 + di, a.1 + dj);
-            let antinode_b = (b.0 - di, b.1 - dj);
+        for (&a, &b) in positions.iter().tuple_combinations() {
+            // Calculate delta using isize
+            let di = a.0 as isize - b.0 as isize;
+            let dj = a.1 as isize - b.1 as isize;
 
-            if antinode_a.0 >= 0
-                && antinode_a.0 < grid.height as isize
-                && antinode_a.1 >= 0
-                && antinode_a.1 < grid.width as isize
-            {
-                antinodes.insert(antinode_a);
+            // Antinode A is a + delta, Antinode B is b - delta
+            if let Some(p_a) = a + (di, dj) {
+                if grid.in_bounds(p_a) {
+                    antinodes.insert(p_a);
+                }
             }
 
-            if antinode_b.0 >= 0
-                && antinode_b.0 < grid.height as isize
-                && antinode_b.1 >= 0
-                && antinode_b.1 < grid.width as isize
-            {
-                antinodes.insert(antinode_b);
+            if let Some(p_b) = b + (-di, -dj) {
+                if grid.in_bounds(p_b) {
+                    antinodes.insert(p_b);
+                }
             }
         }
     }
@@ -45,52 +42,45 @@ fn part1(grid: &Grid<char>) -> usize {
 }
 
 fn part2(grid: &Grid<char>) -> usize {
-    let antenna_positions: HashMap<char, Vec<(isize, isize)>> = get_antenna_positions(grid);
-    let mut antinodes: HashSet<(isize, isize)> = HashSet::new();
+    let antenna_positions = get_antenna_positions(grid);
+    let mut antinodes: HashSet<Pos> = HashSet::new();
 
     for (_, positions) in antenna_positions.iter() {
-        for (a, b) in positions.iter().tuple_combinations() {
-            let (di, dj) = (a.0 - b.0, a.1 - b.1);
-            let mut p1 = (a.0, a.1);
-            let mut p2 = (b.0, b.1);
+        for (&a, &b) in positions.iter().tuple_combinations() {
+            let di = a.0 as isize - b.0 as isize;
+            let dj = a.1 as isize - b.1 as isize;
 
-            loop {
-                let p1_in_bounds = p1.0 >= 0
-                    && p1.0 < grid.height as isize
-                    && p1.1 >= 0
-                    && p1.1 < grid.width as isize;
-                let p2_in_bounds = p2.0 >= 0
-                    && p2.0 < grid.height as isize
-                    && p2.1 >= 0
-                    && p2.1 < grid.width as isize;
+            // Resonant harmonics in direction 1 (starting from a)
+            let mut curr = Some(a);
+            while let Some(p) = curr {
+                if !grid.in_bounds(p) { break; }
+                antinodes.insert(p);
+                curr = p + (di, dj);
+            }
 
-                if !p1_in_bounds && !p2_in_bounds {
-                    break;
-                }
-
-                if p1_in_bounds {
-                    antinodes.insert(p1);
-                }
-
-                if p2_in_bounds {
-                    antinodes.insert(p2);
-                }
-
-                p1 = (p1.0 + di, p1.1 + dj);
-                p2 = (p2.0 - di, p2.1 - dj);
+            // Resonant harmonics in direction 2 (starting from b)
+            let mut curr = Some(b);
+            while let Some(p) = curr {
+                if !grid.in_bounds(p) { break; }
+                antinodes.insert(p);
+                curr = p + (-di, -dj);
             }
         }
     }
     antinodes.len()
 }
 
-fn get_antenna_positions(grid: &Grid<char>) -> HashMap<char, Vec<(isize, isize)>> {
-    let mut antenna_positions: HashMap<char, Vec<(isize, isize)>> = HashMap::new();
-    for (Pos(y, x), &cell) in grid.enumerate_by_pos().filter(|&(_, cell)| *cell != '.') {
-        antenna_positions
-            .entry(cell)
-            .or_default()
-            .push((y as isize, x as isize))
+fn get_antenna_positions(grid: &Grid<char>) -> HashMap<char, Vec<Pos>> {
+    let mut antenna_positions: HashMap<char, Vec<Pos>> = HashMap::new();
+    // Use the grid utility to find all non-empty tiles
+    for r in 0..grid.height {
+        for c in 0..grid.width {
+            let pos = Pos(r, c);
+            let cell = grid[pos];
+            if cell != '.' {
+                antenna_positions.entry(cell).or_default().push(pos);
+            }
+        }
     }
     antenna_positions
 }

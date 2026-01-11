@@ -118,11 +118,10 @@ pub fn part2(inp: &[IdRange]) -> u64 {
                             }
                         }
 
-                        if full_num >= range.start && full_num <= range.end {
-                            if seen.insert(full_num) {
+                        if full_num >= range.start && full_num <= range.end
+                            && seen.insert(full_num) {
                                 part2_total += full_num;
                             }
-                        }
                     }
                 }
             }

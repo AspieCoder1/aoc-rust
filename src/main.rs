@@ -29,8 +29,8 @@ fn main() {
     ]
         .into_iter()
         .flatten()
-        .filter(|s| args.year.map_or(true, |y| y == s.year))
-        .filter(|s| args.day.map_or(true, |d| d == s.day))
+        .filter(|s| args.year.is_none_or(|y| y == s.year))
+        .filter(|s| args.day.is_none_or(|d| d == s.day))
         .collect();
 
     if all_solutions.is_empty() {

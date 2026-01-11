@@ -27,9 +27,8 @@ fn part1(grid: &Grid<char>) -> usize {
     }));
 
     while let Some(Reverse(HeapItem { cost, pos, dir })) = heap.pop() {
-        if let Some(&best) = distances.get(&(pos, dir)) {
-            if cost > best { continue; }
-        }
+        if let Some(&best) = distances.get(&(pos, dir))
+            && cost > best { continue; }
 
         if pos == end {
             return cost;
@@ -110,11 +109,10 @@ fn part2(grid: &Grid<char>) -> usize {
     let mut seen_states = HashSet::new();
 
     for dir in ALL_DIRECTIONS {
-        if let Some(&cost) = distances.get(&(end, dir)) {
-            if cost == best_total_cost {
+        if let Some(&cost) = distances.get(&(end, dir))
+            && cost == best_total_cost {
                 queue.push_back((end, dir));
             }
-        }
     }
 
     while let Some(state) = queue.pop_front() {

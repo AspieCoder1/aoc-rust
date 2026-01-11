@@ -5,24 +5,20 @@
 use crate::utils::grid::{Grid, Pos};
 use anyhow::Result;
 use std::cmp::{Ordering, Reverse};
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 
 pub fn main(input_data: &str) -> Result<(usize, usize)> {
     let grid = Grid::<char>::from_lines(input_data.lines())?;
-    Ok((part1(&grid), part2()))
+    Ok((part1(&grid), part2(&grid)))
 }
 
 fn part1(grid: &Grid<char>) -> usize {
     let start = grid.position(|&c| c == 'S').expect("No start found");
     let end = grid.position(|&c| c == 'E').expect("No end found");
 
-    // We wrap in Reverse for a Min-Heap
     let mut heap: BinaryHeap<Reverse<HeapItem>> = BinaryHeap::new();
-
-    // Track the best (lowest) cost to reach a specific position facing a specific direction
     let mut distances: HashMap<(Pos, Direction), usize> = HashMap::new();
 
-    // Starting state: At 'S', facing East, with 0 cost
     distances.insert((start, Direction::East), 0);
     heap.push(Reverse(HeapItem {
         cost: 0,
@@ -31,89 +27,134 @@ fn part1(grid: &Grid<char>) -> usize {
     }));
 
     while let Some(Reverse(HeapItem { cost, pos, dir })) = heap.pop() {
-        // If we've already found a cheaper way to this exact state, skip processing
-        if let Some(&best_cost) = distances.get(&(pos, dir))
-            && cost > best_cost {
-                continue;
-            }
+        if let Some(&best) = distances.get(&(pos, dir)) {
+            if cost > best { continue; }
+        }
 
-        // Dijkstra's property: The first time we pop the 'end' position,
-        // it is guaranteed to be the minimum cost.
         if pos == end {
             return cost;
         }
 
-        // Explore neighbours: Moving in all 4 directions
-        for &next_dir in &ALL_DIRECTIONS {
-            let next_pos = pos.get_next(next_dir);
-
-            // 1. Check bounds and walls
-            if grid[next_pos] == '#' {
-                continue;
+        // 1. Forward Move
+        let next_pos = pos.get_next(dir);
+        if grid.in_bounds(next_pos) && grid[next_pos] != '#' {
+            let next_cost = cost + 1;
+            if next_cost < *distances.get(&(next_pos, dir)).unwrap_or(&usize::MAX) {
+                distances.insert((next_pos, dir), next_cost);
+                heap.push(Reverse(HeapItem { cost: next_cost, pos: next_pos, dir }));
             }
+        }
 
-            // 2. Calculate the cost to move to the next tile
-            // move_cost = 1 (step) + rotation penalty
-            let move_cost = 1 + dir.cost_changed(next_dir);
-            let next_total_cost = cost + move_cost;
-
-            // 3. Relaxation: Only push to the heap if this path is better than any found so far
-            let current_best = distances
-                .get(&(next_pos, next_dir))
-                .copied()
-                .unwrap_or(usize::MAX);
-
-            if next_total_cost < current_best {
-                distances.insert((next_pos, next_dir), next_total_cost);
-                heap.push(Reverse(HeapItem {
-                    cost: next_total_cost,
-                    pos: next_pos,
-                    dir: next_dir,
-                }));
+        // 2. Turns
+        for next_dir in [dir.turn_left(), dir.turn_right()] {
+            let next_cost = cost + 1000;
+            if next_cost < *distances.get(&(pos, next_dir)).unwrap_or(&usize::MAX) {
+                distances.insert((pos, next_dir), next_cost);
+                heap.push(Reverse(HeapItem { cost: next_cost, pos, dir: next_dir }));
             }
         }
     }
-
-    0 // Should not be reached if there is a path
-}
-
-fn part2() -> usize {
     0
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
-enum Direction {
-    North,
-    South,
-    East,
-    West,
-}
+fn part2(grid: &Grid<char>) -> usize {
+    let start = grid.position(|&c| c == 'S').expect("No start found");
+    let end = grid.position(|&c| c == 'E').expect("No end found");
 
-const ALL_DIRECTIONS: [Direction; 4] = [
-    Direction::North,
-    Direction::South,
-    Direction::East,
-    Direction::West,
-];
+    let mut heap: BinaryHeap<Reverse<HeapItem>> = BinaryHeap::new();
+    let mut distances: HashMap<(Pos, Direction), usize> = HashMap::new();
+    let mut predecessors: HashMap<(Pos, Direction), Vec<(Pos, Direction)>> = HashMap::new();
 
-impl Direction {
-    fn is_rotated(self, other: Direction) -> bool {
-        match self {
-            Direction::North | Direction::South => {
-                [Direction::East, Direction::West].contains(&other)
+    distances.insert((start, Direction::East), 0);
+    heap.push(Reverse(HeapItem { cost: 0, pos: start, dir: Direction::East }));
+
+    let mut best_total_cost = usize::MAX;
+
+    while let Some(Reverse(HeapItem { cost, pos, dir })) = heap.pop() {
+        if cost > *distances.get(&(pos, dir)).unwrap_or(&usize::MAX) {
+            continue;
+        }
+
+        if pos == end {
+            best_total_cost = best_total_cost.min(cost);
+        }
+
+        // Define valid transitions: (NextPos, NextDir, CostIncrement)
+        let moves = [
+            (pos.get_next(dir), dir, 1),
+            (pos, dir.turn_left(), 1000),
+            (pos, dir.turn_right(), 1000),
+        ];
+
+        for (next_pos, next_dir, step_cost) in moves {
+            if !grid.in_bounds(next_pos) || grid[next_pos] == '#' {
+                continue;
             }
-            Direction::East | Direction::West => {
-                [Direction::North, Direction::South].contains(&other)
+
+            let next_cost = cost + step_cost;
+            let current_best = *distances.get(&(next_pos, next_dir)).unwrap_or(&usize::MAX);
+
+            if next_cost < current_best {
+                distances.insert((next_pos, next_dir), next_cost);
+                predecessors.insert((next_pos, next_dir), vec![(pos, dir)]);
+                heap.push(Reverse(HeapItem { cost: next_cost, pos: next_pos, dir: next_dir }));
+            } else if next_cost == current_best {
+                predecessors.entry((next_pos, next_dir)).or_default().push((pos, dir));
             }
         }
     }
-    fn cost_changed(self, other: Direction) -> usize {
-        if self == other {
-            0
-        } else if self.is_rotated(other) {
-            1000
-        } else {
-            2000
+
+    // Backtrack to find all optimal tiles
+    let mut best_tiles = HashSet::new();
+    let mut queue = VecDeque::new();
+    let mut seen_states = HashSet::new();
+
+    for dir in ALL_DIRECTIONS {
+        if let Some(&cost) = distances.get(&(end, dir)) {
+            if cost == best_total_cost {
+                queue.push_back((end, dir));
+            }
+        }
+    }
+
+    while let Some(state) = queue.pop_front() {
+        if !seen_states.insert(state) { continue; }
+        best_tiles.insert(state.0);
+
+        if let Some(preds) = predecessors.get(&state) {
+            for &prev in preds {
+                queue.push_back(prev);
+            }
+        }
+    }
+
+    best_tiles.len()
+}
+
+
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+enum Direction { North, South, East, West }
+
+const ALL_DIRECTIONS: [Direction; 4] = [
+    Direction::North, Direction::South, Direction::East, Direction::West
+];
+
+impl Direction {
+    fn turn_left(self) -> Self {
+        match self {
+            Direction::North => Direction::West,
+            Direction::West => Direction::South,
+            Direction::South => Direction::East,
+            Direction::East => Direction::North,
+        }
+    }
+    fn turn_right(self) -> Self {
+        match self {
+            Direction::North => Direction::East,
+            Direction::East => Direction::South,
+            Direction::South => Direction::West,
+            Direction::West => Direction::North,
         }
     }
 }
@@ -137,7 +178,6 @@ struct HeapItem {
     dir: Direction,
 }
 
-// Implement Ord so that it sorts by cost ascending
 impl Ord for HeapItem {
     fn cmp(&self, other: &Self) -> Ordering {
         self.cost.cmp(&other.cost)
@@ -149,6 +189,7 @@ impl PartialOrd for HeapItem {
         Some(self.cmp(other))
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +238,14 @@ mod tests {
 
         let grid1 = Grid::<char>::from_lines(EXAMPLE2.lines()).unwrap();
         assert_eq!(part1(&grid1), 11048);
+    }
+
+    #[test]
+    fn test_part2() {
+        let grid = Grid::<char>::from_lines(EXAMPLE.lines()).unwrap();
+        assert_eq!(part2(&grid), 45);
+
+        let grid1 = Grid::<char>::from_lines(EXAMPLE2.lines()).unwrap();
+        assert_eq!(part2(&grid1), 64);
     }
 }

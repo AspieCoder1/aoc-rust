@@ -1,8 +1,10 @@
-//! Advent of Code 2025 Day 9
+//! Advent of Code 2024 Day 9 (Alternative)
 //!
-//! Final Source with robust Ray-Casting Fill and 2D Prefix Sums.
+//! Solving for max area rectangle inside a non-convex polygon using
+//! Coordinate Compression and 2D Prefix Sums.
 
-use crate::utils::grid::{Grid, Pos};
+use crate::utils::grid::Grid;
+use crate::utils::point::Point;
 use anyhow::Result;
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -12,7 +14,7 @@ pub fn main(data: &str) -> Result<(usize, usize)> {
     Ok((part1(&input), part2(&input)))
 }
 
-type Tile = (usize, usize);
+type Tile = Point;
 
 pub fn parse_input(input: &str) -> Result<Vec<Tile>> {
     Ok(input
@@ -20,132 +22,142 @@ pub fn parse_input(input: &str) -> Result<Vec<Tile>> {
         .filter(|l| !l.trim().is_empty())
         .map(|line| {
             let (x, y) = line.split_once(',').expect("Invalid format: x,y");
-            (
-                x.trim().parse::<usize>().expect("X parse error"),
-                y.trim().parse::<usize>().expect("Y parse error"),
+            Point::new(
+                x.trim().parse::<i32>().expect("X parse error"),
+                y.trim().parse::<i32>().expect("Y parse error"),
             )
         })
         .collect())
 }
 
+/// Part 1: Simplistic max bounding box between any two vertices
 pub fn part1(input: &[Tile]) -> usize {
-    let mut acc = 0;
-    for (i, &(x0, y0)) in input.iter().enumerate() {
-        for &(x1, y1) in input.iter().skip(i + 1) {
-            let length = x0.abs_diff(x1) + 1;
-            let height = y0.abs_diff(y1) + 1;
-            acc = acc.max(length * height);
+    let mut max_area = 0;
+    for (i, p1) in input.iter().enumerate() {
+        for p2 in input.iter().skip(i + 1) {
+            let width = (p1.x.abs_diff(p2.x) + 1) as usize;
+            let height = (p1.y.abs_diff(p2.y) + 1) as usize;
+            max_area = max_area.max(width * height);
         }
     }
-    acc
+    max_area
 }
 
 struct Compressed {
-    coords: Vec<usize>,
-    map: HashMap<usize, usize>,
+    coords: Vec<i32>,
+    map: HashMap<i32, usize>,
 }
 
 impl Compressed {
-    fn new(points: &[usize]) -> Self {
+    fn new(points: &[i32]) -> Self {
         let mut coords = Vec::new();
         for &p in points {
-            if p > 0 { coords.push(p - 1); }
+            // Include neighbors to ensure we represent the space between points
             coords.push(p);
             coords.push(p + 1);
         }
         coords.sort_unstable();
         coords.dedup();
-
         let map = coords.iter().enumerate().map(|(i, &p)| (p, i)).collect();
         Self { coords, map }
     }
 
-    fn get(&self, point: usize) -> usize {
+    fn get(&self, point: i32) -> usize {
         *self.map.get(&point).expect("Coord missing")
     }
 }
 
 pub fn part2(input: &[Tile]) -> usize {
-    if input.len() < 3 { return 0; }
+    if input.len() < 3 {
+        return 0;
+    }
 
-    let x_coords = input.iter().map(|p| p.0).collect::<Vec<_>>();
-    let y_coords = input.iter().map(|p| p.1).collect::<Vec<_>>();
+    let x_coords = input.iter().map(|p| p.x).collect::<Vec<_>>();
+    let y_coords = input.iter().map(|p| p.y).collect::<Vec<_>>();
 
     let xcomp = Compressed::new(&x_coords);
     let ycomp = Compressed::new(&y_coords);
 
     let mut g = Grid::<bool>::new(false, xcomp.coords.len(), ycomp.coords.len());
 
-    // 1. Draw boundary lines
-    for (&(ax, ay), &(bx, by)) in input.iter().chain(std::iter::once(&input[0])).tuple_windows() {
-        let (cx1, cy1) = (xcomp.get(ax), ycomp.get(ay));
-        let (cx2, cy2) = (xcomp.get(bx), ycomp.get(by));
+    // 1. Draw boundary lines using Point math
+    for (a, b) in input
+        .iter()
+        .chain(std::iter::once(&input[0]))
+        .tuple_windows()
+    {
+        let (cx1, cy1) = (xcomp.get(a.x), ycomp.get(a.y));
+        let (cx2, cy2) = (xcomp.get(b.x), ycomp.get(b.y));
 
-        for i in cy1.min(cy2)..=cy1.max(cy2) {
-            for j in cx1.min(cx2)..=cx1.max(cx2) {
-                g[Pos(i, j)] = true;
+        for y in cy1.min(cy2)..=cy1.max(cy2) {
+            for x in cx1.min(cx2)..=cx1.max(cx2) {
+                g[Point::new(x as i32, y as i32)] = true;
             }
         }
     }
 
-    // 2. Interior Detection & Fill (Borrow-safe)
-    let fill_start = {
-        let mut found = None;
-        // Search for a point that is NOT a boundary but IS inside the polygon
-        'search: for r in 0..g.height {
-            for c in 0..g.width {
-                let p = Pos(r, c);
-                if !g[p] && g.is_inside_polygon(p, |&b| b) {
-                    found = Some(p);
-                    break 'search;
-                }
+    // 2. Interior Detection using Flood Fill
+    // We look for a point guaranteed to be inside. A simple heuristic is to check
+    // points near the boundary.
+    let mut fill_start = None;
+    'outer: for y in 0..g.height {
+        for x in 0..g.width {
+            let p = Point::new(x as i32, y as i32);
+            // Ray casting is expensive, so we only do it until we find one seed point
+            if !g[p] && g.is_inside_polygon(p, |&b| b) {
+                fill_start = Some(p);
+                break 'outer;
             }
         }
-        found
-    };
-
-    if let Some(pos) = fill_start {
-        g.flood_fill(pos, true, |&b| b);
     }
 
-    // 3. Functional 2D Prefix Sum
+    if let Some(start_node) = fill_start {
+        g.flood_fill(start_node, true, |&is_wall| is_wall);
+    }
+
+    // 3. 2D Prefix Sum on the Compressed Grid
     let mut psum = Grid::<usize>::new(0, g.width, g.height);
-    for i in 0..g.height {
-        let mut row_acc = 0;
-        for j in 0..g.width {
-            row_acc += g[Pos(i, j)] as usize;
-            psum[Pos(i, j)] = row_acc;
-        }
-    }
-    for j in 0..g.width {
-        let mut col_acc = 0;
-        for i in 0..g.height {
-            col_acc += psum[Pos(i, j)];
-            psum[Pos(i, j)] = col_acc;
+    for y in 0..g.height {
+        for x in 0..g.width {
+            let p = Point::new(x as i32, y as i32);
+            let val = g[p] as usize;
+            let left = if x > 0 {
+                psum[Point::new(x as i32 - 1, y as i32)]
+            } else {
+                0
+            };
+            let up = if y > 0 {
+                psum[Point::new(x as i32, y as i32 - 1)]
+            } else {
+                0
+            };
+            let diag = if x > 0 && y > 0 {
+                psum[Point::new(x as i32 - 1, y as i32 - 1)]
+            } else {
+                0
+            };
+            psum[p] = val + left + up - diag;
         }
     }
 
-    // 4. Find max area rectangle
+    // 4. Find max area rectangle that is fully "filled" (all true in g)
     let mut max_area = 0;
     for i in 0..input.len() {
         for j in i + 1..input.len() {
             let (p1, p2) = (input[i], input[j]);
-            let (x_min, x_max) = (p1.0.min(p2.0), p1.0.max(p2.0));
-            let (y_min, y_max) = (p1.1.min(p2.1), p1.1.max(p2.1));
+            let (x_min, x_max) = (p1.x.min(p2.x), p1.x.max(p2.x));
+            let (y_min, y_max) = (p1.y.min(p2.y), p1.y.max(p2.y));
 
             let (cx1, cx2) = (xcomp.get(x_min), xcomp.get(x_max));
             let (cy1, cy2) = (ycomp.get(y_min), ycomp.get(y_max));
 
-            let corner = psum[Pos(cy2, cx2)];
-            let up = if cy1 > 0 { psum[Pos(cy1 - 1, cx2)] } else { 0 };
-            let left = if cx1 > 0 { psum[Pos(cy2, cx1 - 1)] } else { 0 };
-            let diag = if cy1 > 0 && cx1 > 0 { psum[Pos(cy1 - 1, cx1 - 1)] } else { 0 };
+            // Query the 2D prefix sum for the compressed region
+            let rect_sum = query_psum(&psum, cx1, cy1, cx2, cy2);
+            let expected_area = (cx2 - cx1 + 1) * (cy2 - cy1 + 1);
 
-            let filled_cells = (corner + diag).saturating_sub(up + left);
-            let expected_cells = (cy2 - cy1 + 1) * (cx2 - cx1 + 1);
-
-            if filled_cells == expected_cells {
-                max_area = max_area.max((x_max - x_min + 1) * (y_max - y_min + 1));
+            if rect_sum == expected_area {
+                let actual_area = (x_max - x_min + 1) * (y_max - y_min + 1);
+                max_area = max_area.max(actual_area as usize);
             }
         }
     }
@@ -153,17 +165,36 @@ pub fn part2(input: &[Tile]) -> usize {
     max_area
 }
 
+fn query_psum(psum: &Grid<usize>, x1: usize, y1: usize, x2: usize, y2: usize) -> usize {
+    let total = psum[Point::new(x2 as i32, y2 as i32)];
+    let left = if x1 > 0 {
+        psum[Point::new(x1 as i32 - 1, y2 as i32)]
+    } else {
+        0
+    };
+    let up = if y1 > 0 {
+        psum[Point::new(x2 as i32, y1 as i32 - 1)]
+    } else {
+        0
+    };
+    let diag = if x1 > 0 && y1 > 0 {
+        psum[Point::new(x1 as i32 - 1, y1 as i32 - 1)]
+    } else {
+        0
+    };
+    total + diag - left - up
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
 
     const EXAMPLE: &str = "7,1\n11,1\n11,7\n9,7\n9,5\n2,5\n2,3\n7,3";
 
     #[test]
     fn test_part1() {
         let input = parse_input(EXAMPLE).unwrap();
-        assert_eq!(part1(&input), 50);
+        assert_eq!(part1(&input), 50); // Corrected bounding box for 11,1 and 2,5
     }
 
     #[test]

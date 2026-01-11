@@ -96,7 +96,6 @@ dependencies = [
  "nalgebra",
  "num",
  "num-traits",
- "paste",
  "pretty_assertions",
  "rayon",
  "regex",

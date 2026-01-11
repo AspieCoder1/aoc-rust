@@ -1,58 +1,68 @@
 //! Advent of Code 2025 Day 8
 //! Link: <https://adventofcode.com/2025/day/8>
-//!
+
 use crate::utils::disjointset::DisjointSet;
-use anyhow::Error;
-use anyhow::Result;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use anyhow::{Context, Error, Result};
 use std::str::FromStr;
 
 pub fn main(data: &str) -> Result<(usize, usize)> {
     let input = parse_input(data)?;
-
     Ok((part1(&input), part2(&input)))
 }
 
 pub fn parse_input(input: &str) -> Result<Input> {
-    let input = input.parse::<Input>()?;
-    Ok(input)
+    input.parse::<Input>()
 }
 
 pub fn part1(input: &Input) -> usize {
-    let nearest_neighbours = get_closest_pairs(&input.points)
-        .into_iter()
-        .take(input.num_pairs)
-        .collect::<Vec<_>>();
-    let mut adj_table: HashMap<u16, HashSet<u16>> = HashMap::new();
+    let n = input.points.len();
+    let mut ds = DisjointSet::new(n);
 
-    // Construct adjacency table
-    for (i, j) in nearest_neighbours {
-        adj_table.entry(i).or_default().insert(j);
-        adj_table.entry(j).or_default().insert(i);
+    // Construct DSU from the top N closest pairs
+    let nearest_neighbours = get_closest_pairs(&input.points);
+    for (i, j) in nearest_neighbours.into_iter().take(input.num_pairs) {
+        ds.union(i as usize, j as usize);
     }
 
-    // We now need to create the disjoint sets
-    let mut disjoint_set: DisjointSet<usize> = DisjointSet::from_iter(0..input.points.len());
-    for (&i, neighbours) in adj_table.iter() {
-        for j in neighbours.iter().copied() {
-            let (i, j) = (i as usize, j as usize);
-            disjoint_set.union(i, j);
+    // To find the top 3 largest sets:
+    // Identify all roots and collect their sizes
+    let mut root_sizes = Vec::new();
+    for i in 0..n {
+        // Only consider the element if it's the representative of its set
+        if ds.find(i) == i {
+            root_sizes.push(ds.size_of(i));
         }
     }
 
-    // Now take the top 3 larget sets and multiply their sizes
-    let mut nodes = disjoint_set.nodes;
-    nodes.sort_unstable_by_key(|node| node.size);
-    nodes.iter().rev().take(3).map(|node| node.size).product()
+    root_sizes.sort_unstable_by(|a, b| b.cmp(a)); // Sort descending
+    root_sizes.iter().take(3).product()
+}
+
+// Kruskal's Algorithm for Minimum Spanning Tree
+pub fn part2(input: &Input) -> usize {
+    let n = input.points.len();
+    let mut ds = DisjointSet::new(n);
+    let mut last_edge = (0, 0);
+
+    // Kruskal's: Iterate through edges sorted by weight
+    for (u, v) in get_closest_pairs(&input.points) {
+        let u = u as usize;
+        let v = v as usize;
+        if ds.union(u, v) {
+            last_edge = (u, v);
+            // If we've reduced the forest to a single tree, we're done
+            if ds.num_sets == 1 {
+                break;
+            }
+        }
+    }
+
+    input.points[last_edge.0].x * input.points[last_edge.1].x
 }
 
 type NearestNeighbour = (u16, u16);
 
-/// Gets the top N nearest neighbours
 fn get_closest_pairs(points: &[Point]) -> Vec<NearestNeighbour> {
-    // Doing this incredibly naively by raw looping
-    // Using matric algebra is much more efficient
     let mut distances: Vec<(usize, u16, u16)> = Vec::new();
     for (i, p1) in points.iter().enumerate() {
         for (j, p2) in points.iter().enumerate().skip(i + 1) {
@@ -60,43 +70,17 @@ fn get_closest_pairs(points: &[Point]) -> Vec<NearestNeighbour> {
             distances.push((distance, i as u16, j as u16));
         }
     }
+    // Sort by distance ascending
     distances.sort_unstable_by_key(|(dist, _, _)| *dist);
 
-    distances
-        .into_iter()
-        .map(|(_, i, j)| (i, j))
-        .collect::<Vec<_>>()
+    distances.into_iter().map(|(_, i, j)| (i, j)).collect()
 }
 
-// Need to just perform kruskal's algorithm here
-pub fn part2(input: &Input) -> usize {
-    let mut mst: Vec<(usize, usize)> = Vec::new();
-    let mut union_find: DisjointSet<usize> = DisjointSet::from_iter(0..input.points.len());
-
-    for (u, v) in get_closest_pairs(&input.points).iter() {
-        if union_find.find(*u as usize) != union_find.find(*v as usize) {
-            mst.push((*u as usize, *v as usize));
-            union_find.union(*u as usize, *v as usize);
-        }
-    }
-
-    let last_edge = mst.last().unwrap();
-    input.points[last_edge.0].x * input.points[last_edge.1].x
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Point {
     pub x: usize,
     pub y: usize,
     pub z: usize,
-}
-
-impl Eq for Point {}
-
-impl PartialEq for Point {
-    fn eq(&self, other: &Self) -> bool {
-        self.x == other.x && self.y == other.y && self.z == other.z
-    }
 }
 
 impl Point {
@@ -104,24 +88,18 @@ impl Point {
         let dx = self.x.abs_diff(other.x);
         let dy = self.y.abs_diff(other.y);
         let dz = self.z.abs_diff(other.z);
-
         dx * dx + dy * dy + dz * dz
     }
 }
 
 impl FromStr for Point {
     type Err = Error;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let split = s.split(',').take(3).collect::<Vec<_>>();
-        let [x, y, z] = split.as_slice() else {
-            return Err(Error::msg(format!("Received an invalid point: {}", s)));
-        };
-        Ok(Self {
-            x: x.parse()?,
-            y: y.parse()?,
-            z: z.parse()?,
-        })
+        let mut split = s.split(',');
+        let x = split.next().context("Missing x")?.trim().parse()?;
+        let y = split.next().context("Missing y")?.trim().parse()?;
+        let z = split.next().context("Missing z")?.trim().parse()?;
+        Ok(Self { x, y, z })
     }
 }
 
@@ -133,11 +111,15 @@ pub struct Input {
 
 impl FromStr for Input {
     type Err = Error;
-
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut lines = s.lines();
-        let num_pairs = lines.next().unwrap().split("=").last().unwrap().parse()?;
-        let points: Vec<Point> = lines.map(|line| line.parse()).collect::<Result<Vec<_>>>()?;
+        let first_line = lines.next().context("Empty input")?;
+        let num_pairs = first_line
+            .split('=')
+            .last()
+            .context("Invalid header")?
+            .parse()?;
+        let points = lines.map(|line| line.parse()).collect::<Result<Vec<_>>>()?;
         Ok(Self { num_pairs, points })
     }
 }

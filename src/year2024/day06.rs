@@ -2,7 +2,8 @@
 //!
 //! Link: <https://adventofcode.com/2024/day/6>
 
-use crate::utils::grid::{Grid, Pos};
+use crate::utils::grid::Grid;
+use crate::utils::point::Point;
 use anyhow::Result;
 use rayon::prelude::*;
 use std::collections::HashSet;
@@ -15,85 +16,73 @@ pub fn main(input_data: &str) -> Result<(usize, usize)> {
 }
 
 fn part1(input: &Grid<char>) -> usize {
-    let start_pos = input.all_positions(|&c| c == '^').next().unwrap();
+    let start_pos = input.find_pos(|&c| c == '^').expect("Guard not found");
     get_visited_locations(input, start_pos).len()
 }
 
-fn get_visited_locations(input: &Grid<char>, start_pos: Pos) -> HashSet<Pos> {
+/// Simulates the guard's path and returns all visited unique positions.
+fn get_visited_locations(input: &Grid<char>, start_pos: Point) -> HashSet<Point> {
     let mut visited = HashSet::new();
     let mut curr = start_pos;
-    let mut dir: (isize, isize) = (-1, 0); // North
+    let mut dir = Point::UP; // North
 
     loop {
         visited.insert(curr);
+        let next = curr + dir;
 
-        // Try to move forward
-        if let Some(next_pos) = curr + dir {
-            if !input.in_bounds(next_pos) {
-                break;
-            }
-            if input[next_pos] == '#' {
-                dir = rotate_right(dir);
-            } else {
-                curr = next_pos;
-            }
+        if !input.in_bounds(next) {
+            break;
+        }
+
+        if input[next] == '#' {
+            dir = dir.rotate_right_90();
         } else {
-            break; // Out of bounds (negative)
+            curr = next;
         }
     }
     visited
 }
 
-fn check_does_loop(input: &Grid<char>, start_pos: Pos) -> bool {
-    // Storing (Position, Direction) to detect cycles
+/// Checks if placing an obstacle at `extra_obstacle` causes the guard to loop.
+fn check_does_loop(input: &Grid<char>, start_pos: Point, extra_obstacle: Point) -> bool {
+    // We use a simple 2D array or a BitSet for even more speed,
+    // but HashSet of (Point, Direction) is robust.
     let mut seen = HashSet::new();
     let mut curr = start_pos;
-    let mut dir: (isize, isize) = (-1, 0);
+    let mut dir = Point::UP;
 
     loop {
+        // If we've been at this position facing this way before, it's a loop
         if !seen.insert((curr, dir)) {
-            return true; // Loop detected
+            return true;
         }
 
-        if let Some(next_pos) = curr + dir {
-            if !input.in_bounds(next_pos) {
-                return false;
-            }
-            if input[next_pos] == '#' {
-                dir = rotate_right(dir);
-            } else {
-                curr = next_pos;
-            }
-        } else {
+        let next = curr + dir;
+
+        if !input.in_bounds(next) {
             return false;
         }
-    }
-}
 
-fn rotate_right(curr_direction: (isize, isize)) -> (isize, isize) {
-    match curr_direction {
-        (-1, 0) => (0, 1),  // N -> E
-        (0, 1) => (1, 0),   // E -> S
-        (1, 0) => (0, -1),  // S -> W
-        (0, -1) => (-1, 0), // W -> N
-        _ => unreachable!(),
+        // Check original obstacles OR the new one we're testing
+        if input[next] == '#' || next == extra_obstacle {
+            dir = dir.rotate_right_90();
+        } else {
+            curr = next;
+        }
     }
 }
 
 fn part2(input: &Grid<char>) -> usize {
-    let start_pos = input.all_positions(|&c| c == '^').next().unwrap();
+    let start_pos = input.find_pos(|&c| c == '^').expect("Guard not found");
 
-    // Optimization: Only test positions on the original path
+    // Optimization: Only test positions that the guard actually visits in Part 1.
+    // An obstacle elsewhere cannot possibly affect the path.
     let original_path = get_visited_locations(input, start_pos);
 
     original_path
         .into_par_iter()
         .filter(|&pos| pos != start_pos)
-        .filter(|&pos| {
-            let mut new_grid = input.clone();
-            new_grid[pos] = '#';
-            check_does_loop(&new_grid, start_pos)
-        })
+        .filter(|&pos| check_does_loop(input, start_pos, pos))
         .count()
 }
 

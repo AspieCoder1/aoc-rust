@@ -2,7 +2,8 @@
 //!
 //! Link: <https://adventofcode.com/2024/day/8>
 
-use crate::utils::grid::{Grid, Pos};
+use crate::utils::grid::Grid;
+use crate::utils::point::Point;
 use anyhow::Result;
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
@@ -15,72 +16,66 @@ pub fn main(input_data: &str) -> Result<(usize, usize)> {
 }
 
 fn part1(grid: &Grid<char>) -> usize {
-    let antenna_positions = get_antenna_positions(grid);
-    let mut antinodes: HashSet<Pos> = HashSet::new();
+    let antenna_map = get_antenna_positions(grid);
+    let mut antinodes: HashSet<Point> = HashSet::new();
 
-    for (_, positions) in antenna_positions.iter() {
+    for positions in antenna_map.values() {
         for (&a, &b) in positions.iter().tuple_combinations() {
-            // Calculate delta using isize
-            let di = a.0 as isize - b.0 as isize;
-            let dj = a.1 as isize - b.1 as isize;
+            // Point subtraction gives the vector between them
+            let delta = a - b;
 
-            // Antinode A is a + delta, Antinode B is b - delta
-            if let Some(p_a) = a + (di, dj)
-                && grid.in_bounds(p_a) {
-                    antinodes.insert(p_a);
-                }
+            // Antinode 1 is 'a' plus the vector
+            let p1 = a + delta;
+            if grid.in_bounds(p1) {
+                antinodes.insert(p1);
+            }
 
-            if let Some(p_b) = b + (-di, -dj)
-                && grid.in_bounds(p_b) {
-                    antinodes.insert(p_b);
-                }
+            // Antinode 2 is 'b' minus the vector
+            let p2 = b - delta;
+            if grid.in_bounds(p2) {
+                antinodes.insert(p2);
+            }
         }
     }
     antinodes.len()
 }
 
 fn part2(grid: &Grid<char>) -> usize {
-    let antenna_positions = get_antenna_positions(grid);
-    let mut antinodes: HashSet<Pos> = HashSet::new();
+    let antenna_map = get_antenna_positions(grid);
+    let mut antinodes: HashSet<Point> = HashSet::new();
 
-    for (_, positions) in antenna_positions.iter() {
+    for positions in antenna_map.values() {
         for (&a, &b) in positions.iter().tuple_combinations() {
-            let di = a.0 as isize - b.0 as isize;
-            let dj = a.1 as isize - b.1 as isize;
+            let delta = a - b;
 
-            // Resonant harmonics in direction 1 (starting from a)
-            let mut curr = Some(a);
-            while let Some(p) = curr {
-                if !grid.in_bounds(p) { break; }
-                antinodes.insert(p);
-                curr = p + (di, dj);
+            // Resonant harmonics: extend from 'a' in the positive direction
+            let mut curr = a;
+            while grid.in_bounds(curr) {
+                antinodes.insert(curr);
+                curr += delta;
             }
 
-            // Resonant harmonics in direction 2 (starting from b)
-            let mut curr = Some(b);
-            while let Some(p) = curr {
-                if !grid.in_bounds(p) { break; }
-                antinodes.insert(p);
-                curr = p + (-di, -dj);
+            // Resonant harmonics: extend from 'b' in the negative direction
+            let mut curr = b;
+            while grid.in_bounds(curr) {
+                antinodes.insert(curr);
+                curr -= delta;
             }
         }
     }
     antinodes.len()
 }
 
-fn get_antenna_positions(grid: &Grid<char>) -> HashMap<char, Vec<Pos>> {
-    let mut antenna_positions: HashMap<char, Vec<Pos>> = HashMap::new();
-    // Use the grid utility to find all non-empty tiles
-    for r in 0..grid.height {
-        for c in 0..grid.width {
-            let pos = Pos(r, c);
-            let cell = grid[pos];
-            if cell != '.' {
-                antenna_positions.entry(cell).or_default().push(pos);
-            }
-        }
+/// Groups antenna positions by their frequency (character).
+fn get_antenna_positions(grid: &Grid<char>) -> HashMap<char, Vec<Point>> {
+    let mut map: HashMap<char, Vec<Point>> = HashMap::new();
+
+    // Use our grid utility to find all antennas (non-dots)
+    for pos in grid.all_positions(|&c| c != '.') {
+        map.entry(grid[pos]).or_default().push(pos);
     }
-    antenna_positions
+
+    map
 }
 
 #[cfg(test)]
@@ -104,13 +99,13 @@ mod tests {
 
     #[test]
     fn test_part1() {
-        let input = Grid::<char>::from_str(EXAMPLE).unwrap();
-        assert_eq!(part1(&input), 14);
+        let grid = Grid::<char>::from_str(EXAMPLE).unwrap();
+        assert_eq!(part1(&grid), 14);
     }
 
     #[test]
     fn test_part2() {
-        let input = Grid::<char>::from_str(EXAMPLE).unwrap();
-        assert_eq!(part2(&input), 34);
+        let grid = Grid::<char>::from_str(EXAMPLE).unwrap();
+        assert_eq!(part2(&grid), 34);
     }
 }

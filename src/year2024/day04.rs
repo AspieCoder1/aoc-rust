@@ -2,7 +2,8 @@
 //!
 //! Link: <https://adventofcode.com/2024/day/4>
 
-use crate::utils::grid::{Grid, GridError, Pos};
+use crate::utils::grid::{Grid, GridError};
+use crate::utils::point::Point;
 use anyhow::Result;
 use std::str::FromStr;
 
@@ -17,31 +18,28 @@ fn parse_input(input_data: &str) -> Result<Grid<char>, GridError> {
 }
 
 fn part1(input: &Grid<char>) -> usize {
-    let search_term = ['X', 'M', 'A', 'S'];
-    let start_positions = input.all_positions(|&c| c == 'X').collect::<Vec<_>>();
+    let search_term = vec!['X', 'M', 'A', 'S'];
+    let start_positions = input.all_positions(|&c| c == 'X');
     let mut num_occurrences = 0;
-    let offsets: [(isize, isize); 8] = [
-        (-1, -1), (-1, 0), (-1, 1),
-        (0, -1),           (0, 1),
-        (1, -1),  (1, 0),  (1, 1),
+
+    // Using Point-based offsets for all 8 directions
+    let directions = [
+        Point::UP,
+        Point::DOWN,
+        Point::LEFT,
+        Point::RIGHT,
+        Point::UP + Point::LEFT,
+        Point::UP + Point::RIGHT,
+        Point::DOWN + Point::LEFT,
+        Point::DOWN + Point::RIGHT,
     ];
 
-    for start_position in start_positions {
-        for &offset in offsets.iter() {
-            // Note: No need to clone the grid here anymore!
-            let path = input.dfs_one_direction(start_position, offset, 4);
-
-            if path.len() == 4 {
-                let mut matches = true;
-                for (ind, &c) in path.iter().enumerate() {
-                    if c != search_term[ind] {
-                        matches = false;
-                        break;
-                    }
-                }
-                if matches {
-                    num_occurrences += 1;
-                }
+    for start_pos in start_positions {
+        for &dir in &directions {
+            // Use the new ray_cast utility to grab 4 characters in a line
+            let path = input.ray_cast(start_pos, dir, 4);
+            if path == search_term {
+                num_occurrences += 1;
             }
         }
     }
@@ -50,26 +48,28 @@ fn part1(input: &Grid<char>) -> usize {
 
 fn part2(input: &Grid<char>) -> usize {
     let mut num_occurrences = 0;
-    // We can filter for 'A' positions that aren't on the edge to avoid bounds checks
-    let start_positions = input
-        .all_positions(|&c| c == 'A')
-        .filter(|&Pos(y, x)| y > 0 && y < input.height - 1 && x > 0 && x < input.width - 1);
 
-    for Pos(y, x) in start_positions {
+    // Filter for 'A' positions that have room for a 3x3 X-shape
+    let start_positions = input.all_positions(|&c| c == 'A').filter(|&p| {
+        p.x > 0 && p.x < (input.width as i32 - 1) && p.y > 0 && p.y < (input.height as i32 - 1)
+    });
+
+    for p in start_positions {
+        // Define relative corners using Point addition/subtraction
+        let tl = p + Point::new(-1, -1);
+        let br = p + Point::new(1, 1);
+        let tr = p + Point::new(1, -1);
+        let bl = p + Point::new(-1, 1);
+
         // Checking the two diagonals for "MAS" or "SAM"
-        // Diagonal 1: top-left to bottom-right
-        // Diagonal 2: top-right to bottom-left
-        match (
-            input[Pos(y - 1, x - 1)],
-            input[Pos(y + 1, x + 1)],
-            input[Pos(y - 1, x + 1)],
-            input[Pos(y + 1, x - 1)],
-        ) {
-            ('M', 'S', 'M', 'S') => num_occurrences += 1, // M.M / .A. / S.S
-            ('S', 'M', 'S', 'M') => num_occurrences += 1, // S.S / .A. / M.M
-            ('M', 'S', 'S', 'M') => num_occurrences += 1, // M.S / .A. / M.S
-            ('S', 'M', 'M', 'S') => num_occurrences += 1, // S.M / .A. / S.M
-            _ => continue,
+        // We can simplify the logic by checking if opposite corners are M/S or S/M
+        let diag1 = (input[tl], input[br]);
+        let diag2 = (input[tr], input[bl]);
+
+        let is_mas = |pair| matches!(pair, ('M', 'S') | ('S', 'M'));
+
+        if is_mas(diag1) && is_mas(diag2) {
+            num_occurrences += 1;
         }
     }
     num_occurrences

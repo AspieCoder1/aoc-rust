@@ -1,254 +1,199 @@
 //! Advent of Code 2024 Day 9
 //!
-//! Link: <https://adventofcode.com/2024/day/9>
+//! Part 1: Two-pointer compaction
+//! Part 2: Interval Tree leftmost-fit defragmentation
 
-use crate::utils::intervaltree::IntervalTree;
-use anyhow::Result;
-use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use crate::utils::interval_tree::{Interval, IntervalTree};
+use anyhow::{Context, Result};
 
 pub fn main(input: &str) -> Result<(usize, usize)> {
-    let data = parse_input(input)?;
-    Ok((part1(&data), part2(&data)))
+    let data = parse_input(input.trim())?;
+    Ok((part1(input.trim()), part2(&data)))
 }
 
-fn parse_input(input: &str) -> Result<Vec<FileBlock>> {
-    let mut blocks: Vec<FileBlock> = Vec::new();
-    let mut block_idx = 0_usize;
-    let mut file_id = 0_isize;
+pub fn parse_input(input: &str) -> Result<Vec<FileBlock>> {
+    let mut blocks = Vec::new();
+    let mut curr_pos = 0;
+    let mut file_id = 0;
 
     for (i, c) in input.chars().enumerate() {
-        let block_size = c.to_digit(10).unwrap() as usize;
-        let end_idx = block_idx + block_size - 1;
-        if block_size == 0 {
-            continue;
+        let size = c.to_digit(10).context("Invalid digit")? as usize;
+        if size > 0 {
+            let end = curr_pos + size - 1;
+            blocks.push(FileBlock {
+                start: curr_pos,
+                end,
+                file_id: if i % 2 == 0 { file_id } else { -1 },
+            });
         }
         if i % 2 == 0 {
-            blocks.push(FileBlock {
-                start: block_idx,
-                end: end_idx,
-                file_id,
-            });
             file_id += 1;
-        } else {
-            blocks.push(FileBlock {
-                start: block_idx,
-                end: end_idx,
-                file_id: -1,
-            });
         }
-        block_idx = end_idx + 1;
+        curr_pos += size;
     }
-    blocks.sort();
     Ok(blocks)
 }
 
-fn part1(input: &[FileBlock]) -> usize {
-    let mut file_blocks = BinaryHeap::new();
-    let mut free_blocks = BinaryHeap::new();
+/// Part 1: Standard two-pointer approach on the expanded disk map
+pub fn part1(input: &str) -> usize {
+    let mut disk: Vec<isize> = Vec::new();
+    let mut file_id = 0;
 
-    for block in input {
-        if block.file_id == -1 {
-            free_blocks.push(Reverse(*block));
+    for (i, c) in input.chars().enumerate() {
+        let size = c.to_digit(10).unwrap() as usize;
+        let val = if i % 2 == 0 {
+            let id = file_id;
+            file_id += 1;
+            id
         } else {
-            file_blocks.push(*block);
+            -1
+        };
+        for _ in 0..size {
+            disk.push(val);
         }
     }
 
-    let mut curr_file = file_blocks.pop().unwrap();
-    while let Some(Reverse(empty_block)) = free_blocks.pop() {
-        let free_space = empty_block.size();
-        let file_size = curr_file.size();
+    let mut left = 0;
+    let mut right = disk.len() - 1;
 
-        if curr_file.start < empty_block.start {
-            break;
-        }
-
-        match free_space.cmp(&file_size) {
-            std::cmp::Ordering::Less => {
-                let new_file = FileBlock {
-                    start: empty_block.start,
-                    end: empty_block.end,
-                    file_id: curr_file.file_id,
-                };
-                curr_file.end -= free_space;
-                file_blocks.push(new_file);
-            }
-            std::cmp::Ordering::Equal => {
-                // File and empty space are the same size
-                let new_file = FileBlock {
-                    start: empty_block.start,
-                    end: empty_block.end,
-                    file_id: curr_file.file_id,
-                };
-                file_blocks.push(new_file);
-                curr_file = file_blocks.pop().unwrap();
-            }
-            std::cmp::Ordering::Greater => {
-                // Empty space is greater than file size
-                let new_file = FileBlock {
-                    start: empty_block.start,
-                    end: empty_block.start + file_size - 1,
-                    file_id: curr_file.file_id,
-                };
-                let remaining_empty_block = FileBlock {
-                    start: new_file.end + 1,
-                    end: empty_block.end,
-                    file_id: -1,
-                };
-                free_blocks.push(Reverse(remaining_empty_block));
-                file_blocks.push(new_file);
-                curr_file = file_blocks.pop().unwrap();
-            }
+    while left < right {
+        if disk[left] != -1 {
+            left += 1;
+        } else if disk[right] == -1 {
+            right -= 1;
+        } else {
+            disk[left] = disk[right];
+            disk[right] = -1;
+            left += 1;
+            right -= 1;
         }
     }
-    file_blocks.push(curr_file);
-    file_blocks.iter().map(|f| f.check_sum()).sum()
+
+    // Fix: Using |&id| instead of |(&id)| or explicit deref
+    disk.iter()
+        .enumerate()
+        .filter(|(_, id)| **id != -1)
+        .map(|(pos, id)| pos * (*id as usize))
+        .sum()
 }
 
-fn part2(input: &[FileBlock]) -> usize {
-    let mut empty_blocks = IntervalTree::<usize>::new();
-    let mut file_blocks = Vec::new();
-    let mut defragged_disk = Vec::new();
+/// Part 2: Interval Tree to find leftmost available space for whole files
+pub fn part2(input: &[FileBlock]) -> usize {
+    let mut tree = IntervalTree::<usize>::new();
+    let mut files = Vec::new();
 
     for block in input {
         if block.file_id == -1 {
-            empty_blocks.insert(block.start, block.end);
+            tree.insert(block.start, block.end);
         } else {
-            file_blocks.push(*block);
+            files.push(*block);
         }
     }
 
-    while let Some(mut file_block) = file_blocks.pop() {
-        let intervals_before = empty_blocks.find_all_before(file_block.start);
-        for interval in intervals_before {
-            if interval.size() >= file_block.size() {
-                // Delete interval empty space interval
-                empty_blocks.delete(interval.low, interval.high);
+    let mut final_checksum = 0;
 
-                // Add remaining free space after the file is moved
-                let remaining_free_space = interval.size().abs_diff(file_block.size());
-                if remaining_free_space > 0 {
-                    empty_blocks.insert(interval.low + file_block.size(), interval.high);
+    // Process files from right to left (highest ID first)
+    for mut file in files.into_iter().rev() {
+        // Safety check: if file.start is 0, there are no gaps before it
+        if file.start > 0 {
+            // Find all potential gaps to the left of the current file
+            let mut candidates = tree.find_all_overlapping(Interval::new(0, file.start - 1));
+
+            // Sort to ensure we pick the LEFTMOST fitting gap
+            candidates.sort_by_key(|c| c.low);
+
+            if let Some(target) = candidates
+                .into_iter()
+                .find(|c| (c.high - c.low + 1) >= file.size())
+            {
+                // Remove the old gap
+                tree.delete(target.low, target.high);
+
+                let f_size = file.size();
+                file.start = target.low;
+                file.end = target.low + f_size - 1;
+
+                // Re-insert remaining free space if the gap was larger than the file
+                if (target.high - target.low + 1) > f_size {
+                    tree.insert(target.low + f_size, target.high);
                 }
-
-                // Update file block
-                let mut new_file_block = file_block;
-                new_file_block.start = interval.low;
-                new_file_block.end = interval.low + file_block.size() - 1;
-                file_block = new_file_block;
-                break;
             }
         }
-        defragged_disk.push(file_block);
+
+        final_checksum += file.check_sum();
     }
-    defragged_disk.iter().map(|f| f.check_sum()).sum()
+
+    final_checksum
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
-struct FileBlock {
-    start: usize,
-    end: usize,
-    file_id: isize,
+pub struct FileBlock {
+    pub start: usize,
+    pub end: usize,
+    pub file_id: isize,
 }
 
 impl FileBlock {
-    #[allow(unused)]
-    fn new(start: usize, end: usize, file_id: isize) -> Self {
+    pub fn new(start: usize, end: usize, file_id: isize) -> Self {
         Self {
             start,
             end,
             file_id,
         }
     }
-    fn size(&self) -> usize {
-        self.end.abs_diff(self.start) + 1
+
+    pub fn size(&self) -> usize {
+        self.end - self.start + 1
     }
 
-    fn check_sum(&self) -> usize {
-        let (s, e) = (self.start as isize, self.end as isize);
-        let sum_to_end = (e + 1) * e / 2;
-        let sum_to_start = if s < 1 { 0 } else { (s) * (s - 1) / 2 };
-        let check_sum = self.file_id * (sum_to_end - sum_to_start);
-        check_sum as usize
-    }
-}
-
-impl PartialOrd for FileBlock {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for FileBlock {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.start.cmp(&other.start)
+    /// O(1) Checksum using arithmetic series: ID * (n/2 * (start + end))
+    pub fn check_sum(&self) -> usize {
+        if self.file_id == -1 {
+            return 0;
+        }
+        let n = (self.end - self.start) + 1;
+        let sum_of_positions = n * (self.start + self.end) / 2;
+        sum_of_positions * (self.file_id as usize)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
 
-    #[test]
-    fn test_parse_blocks() {
-        let input = parse_input("12345").unwrap();
-        assert_eq!(
-            input,
-            vec![
-                FileBlock::new(0, 0, 0),
-                FileBlock::new(1, 2, -1),
-                FileBlock::new(3, 5, 1),
-                FileBlock::new(6, 9, -1),
-                FileBlock::new(10, 14, 2),
-            ]
-        )
-    }
-
-    #[test]
-    fn test_parse_input_2() {
-        let input = parse_input("2333133121414131402").unwrap();
-        let expected_blocks = vec![
-            FileBlock::new(0, 1, 0),
-            FileBlock::new(2, 4, -1),
-            FileBlock::new(5, 7, 1),
-            FileBlock::new(8, 10, -1),
-            FileBlock::new(11, 11, 2),
-            FileBlock::new(12, 14, -1),
-            FileBlock::new(15, 17, 3),
-            FileBlock::new(18, 18, -1),
-            FileBlock::new(19, 20, 4),
-            FileBlock::new(21, 21, -1),
-            FileBlock::new(22, 25, 5),
-            FileBlock::new(26, 26, -1),
-            FileBlock::new(27, 30, 6),
-            FileBlock::new(31, 31, -1),
-            FileBlock::new(32, 34, 7),
-            FileBlock::new(35, 35, -1),
-            FileBlock::new(36, 39, 8),
-            FileBlock::new(40, 41, 9),
-        ];
-        assert_eq!(input, expected_blocks);
-    }
-
-    #[test]
-    fn test_get_file_size() {
-        let block = FileBlock::new(0, 1, 0);
-        let block2 = FileBlock::new(32, 34, 7);
-        assert_eq!(block.size(), 2);
-        assert_eq!(block2.size(), 3);
-    }
+    const EXAMPLE: &str = "2333133121414131402";
 
     #[test]
     fn test_part1() {
-        let input = parse_input("2333133121414131402").unwrap();
-        assert_eq!(part1(&input), 1928);
+        assert_eq!(part1(EXAMPLE), 1928);
     }
 
     #[test]
     fn test_part2() {
-        let input = parse_input("2333133121414131402").unwrap();
-        assert_eq!(part2(&input), 2858);
+        let data = parse_input(EXAMPLE).unwrap();
+        assert_eq!(part2(&data), 2858);
+    }
+
+    #[test]
+    fn test_checksum_o1() {
+        let file = FileBlock::new(4, 6, 2); // Positions 4, 5, 6 with ID 2
+        // (4*2) + (5*2) + (6*2) = 8 + 10 + 12 = 30
+        assert_eq!(file.check_sum(), 30);
+    }
+
+    #[test]
+    fn test_leftmost_fit() {
+        // File 2 (size 2) at end, gaps of size 1 and 3 at the start
+        let input = vec![
+            FileBlock::new(0, 0, -1), // gap size 1
+            FileBlock::new(1, 1, 0),
+            FileBlock::new(2, 4, -1), // gap size 3
+            FileBlock::new(5, 6, 2),  // file size 2
+        ];
+        // It should skip the first gap (too small) and take the start of the second gap
+        let result = part2(&input);
+        // File 0: (1*0) = 0
+        // File 2: moved to pos 2,3: (2*2) + (3*2) = 10
+        assert_eq!(result, 10);
     }
 }

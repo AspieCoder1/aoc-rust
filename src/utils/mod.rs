@@ -5,7 +5,7 @@ pub mod grid;
 pub mod disjointset;
 pub mod read_lines;
 pub mod simplex;
-pub mod intervaltree;
+pub mod interval_tree;
 pub mod point;
 
 // Optional: You can add "prelude" style re-exports here

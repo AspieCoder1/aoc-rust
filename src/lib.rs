@@ -28,7 +28,7 @@ macro_rules! library {
     }
 }
 
-library!(utils "Utility functions" grid, disjointset, read_lines, simplex, intervaltree, point);
+library!(utils "Utility functions" grid, disjointset, read_lines, simplex, interval_tree, point);
 
 // --- 4. The Registration Macro ---
 // This is exported so it can be used inside your year/mod.rs files.

@@ -3,7 +3,7 @@
 //! An augmented interval tree for $O(\log N)$ range-overlap and point queries.
 //! Includes utilities for merging, subtracting, and deleting intervals.
 
-use std::cmp::{max, min};
+use std::cmp::max;
 use std::ops::RangeInclusive;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

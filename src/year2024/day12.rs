@@ -37,7 +37,7 @@ fn part1(input: &Grid<char>) -> usize {
             // Account for neighbors outside the "expand" border which are always different
             // (Standard cardinal_neighbors only returns in_bounds positions)
             let in_bounds_count = input.cardinal_neighbors(pos).count();
-            perimeter += (4 - in_bounds_count);
+            perimeter += 4 - in_bounds_count;
         }
         total_price += area * perimeter;
     }
@@ -99,12 +99,11 @@ fn find_regions(input: &Grid<char>) -> HashMap<usize, HashSet<usize>> {
 
             // Only need to check right and down to form all unions
             for offset in [(0, 1), (1, 0)] {
-                if let Some(neighbor) = pos + offset {
-                    if input.in_bounds(neighbor) && input[neighbor] == curr_val {
+                if let Some(neighbor) = pos + offset
+                    && input.in_bounds(neighbor) && input[neighbor] == curr_val {
                         let neighbor_idx = neighbor.0 * input.width + neighbor.1;
                         ds.union(curr_idx, neighbor_idx);
                     }
-                }
             }
         }
     }
@@ -119,11 +118,10 @@ fn find_regions(input: &Grid<char>) -> HashMap<usize, HashSet<usize>> {
 }
 
 fn is_different(grid: &Grid<char>, pos: Pos, offset: (isize, isize), value: char) -> bool {
-    if let Some(next_pos) = pos + offset {
-        if grid.in_bounds(next_pos) {
+    if let Some(next_pos) = pos + offset
+        && grid.in_bounds(next_pos) {
             return grid[next_pos] != value;
         }
-    }
     true // If out of bounds, it's "different" (the border)
 }
 

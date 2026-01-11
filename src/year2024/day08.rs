@@ -25,17 +25,15 @@ fn part1(grid: &Grid<char>) -> usize {
             let dj = a.1 as isize - b.1 as isize;
 
             // Antinode A is a + delta, Antinode B is b - delta
-            if let Some(p_a) = a + (di, dj) {
-                if grid.in_bounds(p_a) {
+            if let Some(p_a) = a + (di, dj)
+                && grid.in_bounds(p_a) {
                     antinodes.insert(p_a);
                 }
-            }
 
-            if let Some(p_b) = b + (-di, -dj) {
-                if grid.in_bounds(p_b) {
+            if let Some(p_b) = b + (-di, -dj)
+                && grid.in_bounds(p_b) {
                     antinodes.insert(p_b);
                 }
-            }
         }
     }
     antinodes.len()

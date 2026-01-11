@@ -32,11 +32,10 @@ fn part1(grid: &Grid<char>) -> usize {
 
     while let Some(Reverse(HeapItem { cost, pos, dir })) = heap.pop() {
         // If we've already found a cheaper way to this exact state, skip processing
-        if let Some(&best_cost) = distances.get(&(pos, dir)) {
-            if cost > best_cost {
+        if let Some(&best_cost) = distances.get(&(pos, dir))
+            && cost > best_cost {
                 continue;
             }
-        }
 
         // Dijkstra's property: The first time we pop the 'end' position,
         // it is guaranteed to be the minimum cost.

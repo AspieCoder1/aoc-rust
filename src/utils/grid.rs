@@ -1,10 +1,8 @@
-use crate::utils::read_lines::read_lines;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::num::ParseIntError;
 use std::ops::{Add, Index, IndexMut};
-use std::path::Path;
 use std::str::FromStr;
-use std::{cmp::Ordering, fmt, io};
+use std::{fmt, io};
 use thiserror::Error;
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -194,13 +192,13 @@ where
     pub fn expand(&self, fill: T) -> Self {
         let width = self.width + 2;
         let mut g = Vec::with_capacity(width * (self.height + 2));
-        g.extend(std::iter::repeat(fill.clone()).take(width));
+        g.extend(std::iter::repeat_n(fill.clone(), width));
         for i in 0..self.height {
             g.push(fill.clone());
             g.extend(self.row(i).cloned());
             g.push(fill.clone());
         }
-        g.extend(std::iter::repeat(fill.clone()).take(width));
+        g.extend(std::iter::repeat_n(fill.clone(), width));
         Self {
             width,
             height: self.height + 2,
@@ -216,7 +214,7 @@ where
         )
     }
 
-    pub fn subgrid_elements(&'a self, from_pos: Pos, to_pos: Pos) -> impl Iterator<Item = &T> {
+    pub fn subgrid_elements(&'a self, from_pos: Pos, to_pos: Pos) -> impl Iterator<Item = &'a T> {
         (from_pos.0..=to_pos.0)
             .flat_map(move |i| self.row(i).skip(from_pos.1).take(to_pos.1 - from_pos.1 + 1))
     }

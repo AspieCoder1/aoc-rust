@@ -81,11 +81,10 @@ fn solve(grid: &Grid<char>) -> (usize, usize) {
 
     // Any direction that reaches 'end' with the global best cost is a valid starting point for backtracking
     for &d in &[Point::UP, Point::DOWN, Point::LEFT, Point::RIGHT] {
-        if let Some(&cost) = distances.get(&(end, d)) {
-            if cost == best_total_cost {
+        if let Some(&cost) = distances.get(&(end, d))
+            && cost == best_total_cost {
                 queue.push_back((end, d));
             }
-        }
     }
 
     while let Some(state) = queue.pop_front() {

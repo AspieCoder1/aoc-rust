@@ -116,7 +116,7 @@ impl FromStr for Input {
         let first_line = lines.next().context("Empty input")?;
         let num_pairs = first_line
             .split('=')
-            .last()
+            .next_back()
             .context("Invalid header")?
             .parse()?;
         let points = lines.map(|line| line.parse()).collect::<Result<Vec<_>>>()?;

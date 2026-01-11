@@ -131,11 +131,10 @@ impl<T: Clone + Eq> Grid<T> {
         let mut crossings = 0;
         for x in pos.x..self.width as i32 {
             let p = Point::new(x, pos.y);
-            if boundary_fn(&self[p]) {
-                if pos.y > 0 && boundary_fn(&self[p + Point::UP]) {
+            if boundary_fn(&self[p])
+                && pos.y > 0 && boundary_fn(&self[p + Point::UP]) {
                     crossings += 1;
                 }
-            }
         }
         crossings % 2 == 1
     }
@@ -178,13 +177,13 @@ impl<T: Clone> Grid<T> {
     pub fn expand(&self, fill: T) -> Self {
         let new_w = self.width + 2;
         let mut g = Vec::with_capacity(new_w * (self.height + 2));
-        g.extend(std::iter::repeat(fill.clone()).take(new_w));
+        g.extend(std::iter::repeat_n(fill.clone(), new_w));
         for row in self.g.chunks(self.width) {
             g.push(fill.clone());
             g.extend(row.iter().cloned());
             g.push(fill.clone());
         }
-        g.extend(std::iter::repeat(fill.clone()).take(new_w));
+        g.extend(std::iter::repeat_n(fill.clone(), new_w));
         Self::from_vals(g, new_w, self.height + 2)
     }
 }

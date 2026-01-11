@@ -80,6 +80,15 @@ where
     reverse_mapping: Vec<T>,
 }
 
+impl<T> Default for MappingDisjointSet<T>
+where
+    T: Eq + Hash + Clone,
+ {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> MappingDisjointSet<T>
 where
     T: Eq + Hash + Clone,

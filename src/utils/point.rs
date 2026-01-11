@@ -3,7 +3,7 @@
 //! Optimized for a y-down coordinate system (standard in grids).
 //! Provides vector arithmetic and rotation logic.
 
-use std::ops::{Add, AddAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Mul, Sub, SubAssign};
 
 /// A point or vector in 2D space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -38,7 +38,7 @@ impl Point {
     pub fn euclidean_squared(&self, other: &Self) -> u32 {
         let dx = self.x.abs_diff(other.x);
         let dy = self.y.abs_diff(other.y);
-        (dx * dx + dy * dy)
+        dx * dx + dy * dy
     }
 
     /// Returns the Euclidean distance between two points as a float.
@@ -90,6 +90,13 @@ impl Point {
 
         points
     }
+
+    pub fn wrap(&self, width: i32, height: i32) -> Self {
+        Point::new(
+            ((self.x % width) + width) % width,
+            ((self.y % height) + height) % height,
+        )
+    }
 }
 
 // --- Operator Overloads ---
@@ -123,6 +130,13 @@ impl SubAssign for Point {
     fn sub_assign(&mut self, rhs: Self) {
         self.x -= rhs.x;
         self.y -= rhs.y;
+    }
+}
+
+impl Mul<i32> for Point {
+    type Output = Self;
+    fn mul(self, scalar: i32) -> Self {
+        Point::new(self.x * scalar, self.y * scalar)
     }
 }
 
@@ -260,5 +274,33 @@ mod tests {
         // Should catch (0,0), (1,1), (2,2)
         assert_eq!(pts.len(), 3);
         assert_eq!(pts[1], Point::new(1, 1));
+    }
+
+    #[test]
+    fn test_arithmetic_operators() {
+        let p1 = Point::new(10, 20);
+        let p2 = Point::new(5, -5);
+
+        // Test Add
+        assert_eq!(p1 + p2, Point::new(15, 15));
+
+        // Test Mul (Scalar)
+        assert_eq!(p1 * 3, Point::new(30, 60));
+        assert_eq!(p2 * -2, Point::new(-10, 10));
+    }
+
+    #[test]
+    fn test_wrap_logic() {
+        // Test wrapping positive out-of-bounds
+        let p1 = Point::new(105, 10);
+        assert_eq!(p1.wrap(100, 100), Point::new(5, 10));
+
+        // Test wrapping negative coordinates (the tricky part of modulo)
+        let p2 = Point::new(-1, -5);
+        assert_eq!(p2.wrap(100, 100), Point::new(99, 95));
+
+        // Test exact boundary
+        let p3 = Point::new(100, 100);
+        assert_eq!(p3.wrap(100, 100), Point::new(0, 0));
     }
 }

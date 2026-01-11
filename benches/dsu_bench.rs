@@ -27,7 +27,7 @@ fn bench_comparisons(c: &mut Criterion) {
 
     group.bench_function("Mapping DisjointSet (String)", |b| {
         b.iter_batched(
-            || MappingDisjointSet::new(),
+            MappingDisjointSet::new,
             |mut dsu| {
                 for i in 0..iterations - 1 {
                     dsu.union(

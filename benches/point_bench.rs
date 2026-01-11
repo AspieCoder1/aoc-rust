@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;
-use aoc::utils::point::Point; // Ensure this matches your project structure
+use aoc::utils::point::Point;
 
 fn bench_point_arithmetic(c: &mut Criterion) {
     let p1 = Point::new(123, 456);
@@ -25,12 +25,12 @@ fn bench_point_geometry(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("Point Geometry");
 
-    group.bench_function("manhattan_distance", |b| {
+    group.bench_function("manhattan", |b| {
         b.iter(|| black_box(p1).manhattan_distance(black_box(&p2)))
     });
 
-    group.bench_function("euclidean_distance", |b| {
-        b.iter(|| black_box(p1).euclidean_distance(black_box(&p2)))
+    group.bench_function("euclidean", |b| {
+        b.iter(|| black_box(p1).euclidean_squared(black_box(&p2)))
     });
 
     group.bench_function("rotate_cw", |b| {

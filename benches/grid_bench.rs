@@ -45,6 +45,16 @@ fn bench_grid_ops(c: &mut Criterion) {
     });
 
     trans_group.finish();
+
+    let mut search_group = c.benchmark_group("Grid Search");
+
+    search_group.bench_function("bfs_100x100", |b| {
+        b.iter(|| {
+            black_box(grid.bfs(black_box(center), |_, &c| c != '#'));
+        })
+    });
+
+    search_group.finish();
 }
 
 criterion_group!(benches, bench_grid_ops);

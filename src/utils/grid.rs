@@ -5,6 +5,7 @@
 //! coordinate-based operations.
 
 use crate::utils::point::Point;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Display};
 use std::ops::{Index, IndexMut};
 use std::str::FromStr;
@@ -95,6 +96,30 @@ impl<T> Grid<T> {
             .filter(|&(dx, dy)| dx != 0 || dy != 0)
             .map(move |(dx, dy)| p + Point::new(dx, dy))
             .filter(move |&pos| self.in_bounds(pos))
+    }
+
+    /// Breadth-first search from `start` over cardinal neighbors, returning
+    /// the shortest distance (in steps) to every reachable cell for which
+    /// `passable` returns `true`.
+    pub fn bfs<F>(&self, start: Point, passable: F) -> HashMap<Point, usize>
+    where
+        F: Fn(Point, &T) -> bool,
+    {
+        let mut dist = HashMap::new();
+        dist.insert(start, 0);
+        let mut queue = VecDeque::from([start]);
+
+        while let Some(pos) = queue.pop_front() {
+            let d = dist[&pos];
+            for next in self.cardinal_neighbors(pos) {
+                if !dist.contains_key(&next) && passable(next, &self[next]) {
+                    dist.insert(next, d + 1);
+                    queue.push_back(next);
+                }
+            }
+        }
+
+        dist
     }
 }
 
@@ -345,6 +370,32 @@ mod tests {
         let g = rect_grid();
         assert_eq!(g.find_pos(|&c| c == 'z'), None);
         assert_eq!(g.all_positions(|&c| c == 'z').count(), 0);
+    }
+
+    #[test]
+    fn test_bfs_distances_with_walls() {
+        let g = Grid::from_str("....\n.##.\n....").unwrap();
+        let dist = g.bfs(Point::new(0, 0), |_, &c| c != '#');
+
+        // Walls are never reached
+        assert!(!dist.contains_key(&Point::new(1, 1)));
+        assert!(!dist.contains_key(&Point::new(2, 1)));
+
+        // Shortest path around the wall
+        assert_eq!(dist[&Point::new(0, 0)], 0);
+        assert_eq!(dist[&Point::new(3, 0)], 3);
+        assert_eq!(dist[&Point::new(0, 2)], 2);
+        assert_eq!(dist[&Point::new(3, 2)], 5);
+    }
+
+    #[test]
+    fn test_bfs_start_walled_off() {
+        let g = Grid::from_str("###\n#.#\n###").unwrap();
+        let dist = g.bfs(Point::new(1, 1), |_, &c| c != '#');
+
+        // Surrounded on all sides, so only the start itself is reachable
+        assert_eq!(dist.len(), 1);
+        assert_eq!(dist[&Point::new(1, 1)], 0);
     }
 
     #[test]
